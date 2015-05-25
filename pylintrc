@@ -1,0 +1,5 @@
+[MESSAGES CONTROL]
+disable=locally-disabled,too-many-arguments,too-many-locals,too-many-statements,too-many-branches,too-many-instance-attributes,too-few-public-methods
+
+[REPORT]
+reports=no
