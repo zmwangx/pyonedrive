@@ -2,6 +2,8 @@
 
 """Authenticate with OneDrive's API and make authenticated HTTP requests."""
 
+# TODO: implement authorization and code exchange dance
+
 import configparser
 import os
 import time

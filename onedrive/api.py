@@ -11,6 +11,8 @@ import urllib.parse
 
 import requests
 
+import zmwangx.pbar
+
 import onedrive.auth
 import onedrive.log
 import onedrive.upload_helper
@@ -22,7 +24,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         """Init."""
         super().__init__()
 
-    def upload(self, directory, local_path, chunk_size=10485760, timeout=15, stream=False):
+    def upload(self, directory, local_path,
+               chunk_size=10485760, timeout=15, stream=False, show_progress_bar=False):
         """Upload file using the resumable upload API."""
         path = os.path.join(directory, os.path.basename(local_path))
         url = self.geturl(path)
@@ -51,6 +54,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise OSError("'%s' is not a file" % local_path)
         canonical_path = os.path.realpath(local_path)
         total = os.path.getsize(canonical_path)
+        pbar = zmwangx.pbar.ProgressBar(total) if show_progress_bar else None
         with open(canonical_path, "rb") as fileobj:
             position = 0
             response = None
@@ -102,7 +106,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                             time.sleep(3)
 
                         try:
-                            status_response = self.get(upload_url)
+                            status_response = self.get(upload_url, path=path)
                         except requests.exceptions.RequestException as err:
                             logging.error(str(err))
                             raise
@@ -128,12 +132,19 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
                         # single range, set new position
                         position = int(expected_ranges[0].split("-")[0])
+                        if pbar:
+                            pbar.force_update(position)
                         continue
 
                     raise OSError("got HTTP %d: %s" %
                                   (response.status_code, response.text))
+
                 position += size
+                if pbar:
+                    pbar.update(size)
             assert response.status_code in {200, 201}  # 200 OK or 201 Created
+            if pbar:
+                pbar.finish()
 
     def exists(self, path):
         """Check if file or directory exists in OneDrive."""

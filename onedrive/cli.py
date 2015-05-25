@@ -6,6 +6,7 @@ import argparse
 import multiprocessing
 
 from zmwangx.colorout import cerror, cfatal_error, cprogress
+import zmwangx.pbar
 
 import onedrive.api
 import onedrive.log
@@ -13,18 +14,21 @@ import onedrive.log
 class Uploader(object):
     """Uploader that uploads files to a given OneDrive directory."""
 
-    def __init__(self, client, directory, timeout=None, stream=False):
+    def __init__(self, client, directory,
+                 timeout=None, stream=False, show_progress_bar=False):
         """Set client, directory, and parameters."""
         self._client = client
         self._directory = directory
         self._timeout = timeout
         self._stream = stream
+        self._show_progress_bar = show_progress_bar
 
     def __call__(self, local_path):
         """Upload a local file."""
         try:
             self._client.upload(self._directory, local_path,
-                                timeout=self._timeout, stream=self._stream)
+                                timeout=self._timeout, stream=self._stream,
+                                show_progress_bar=self._show_progress_bar)
             cprogress("finished uploading '%s'" % local_path)
             return 0
         except Exception as err:
@@ -67,8 +71,10 @@ def cli_upload():
     jobs = min(args.jobs, num_files) if args.jobs > 0 else num_files
     timeout = args.base_segment_timeout + jobs
     with multiprocessing.Pool(processes=jobs, maxtasksperchild=1) as pool:
+        show_progress_bar = (num_files == 1) and zmwangx.pbar.autopbar()
         uploader = Uploader(client, directory,
-                            timeout=timeout, stream=args.streaming_upload)
+                            timeout=timeout, stream=args.streaming_upload,
+                            show_progress_bar=show_progress_bar)
         returncodes = []
         try:
             returncodes = pool.map(uploader, args.local_paths, chunksize=1)

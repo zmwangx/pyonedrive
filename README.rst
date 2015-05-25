@@ -30,6 +30,18 @@ direct link to a remote directory).
 Warnings
 --------
 
+* Note that this package depends on the ``zmwangx.colorout`` module (`link
+  <https://github.com/zmwangx/pyzmwangx/blob/master/zmwangx/colorout.py>`_) for
+  color printing of progress and errors, and the ``zmwangx.pbar`` module (`link
+  <https://github.com/zmwangx/pyzmwangx/blob/master/zmwangx/pbar.py>`_) module
+  for displaying progress bar. You may install the ``zmwangx`` package by
+  running::
+
+    pip install -r requirements.txt
+
+  which installs the package through git. Use a virtualenv if you don't want to
+  pollute your environment.
+
 * One needs to save the credentials to ``~/.config/onedrive/conf.ini``. The
   config file should be in the following format::
 
@@ -42,13 +54,6 @@ Warnings
   needs to somehow obtain the refresh token on their own. ``python-onedrive``
   could help in this regard (in fact, I just copied the refresh token from my
   ``python-onedrive.yml``.
-
-* Note that ``onedrive/cli.py`` depends on the ``zmwangx.colorout`` module
-  (`link
-  <https://github.com/zmwangx/pyzmwangx/blob/master/zmwangx/colorout.py>`_) for
-  color printing of progress and errors. You may safely replace the
-  ``cprogress``, ``cerror``, and ``cfatal_error`` calls with standard
-  ``sys.stderr.write`` calls.
 
 Best practices
 --------------
