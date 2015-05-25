@@ -2,7 +2,7 @@
  pyonedrive
 ============
 
-This is a bare bones and badly-written [#]_ OneDrive batch uploader, using the
+This is a bare-bones and badly-written [#]_ OneDrive batch uploader, using the
 new API. For a more complete OneDrive solution in Python, see
 `mk-fg/python-onedrive
 <https://github.com/mk-fg/python-onedrive>`_. Unfortunately,
@@ -30,11 +30,25 @@ direct link to a remote directory).
 Warnings
 --------
 
-Note that ``onedrive/cli.py`` depends on the ``zmwangx.colorout`` module (`link
-<https://github.com/zmwangx/pyzmwangx/blob/master/zmwangx/colorout.py>`_) for
-color printing of progress and errors. You may safely replace the
-``cprogress``, ``cerror``, and ``cfatal_error`` calls with standard
-``sys.stderr.write`` calls.
+* One needs to save the credentials to ``~/.config/onedrive/conf.ini``. The
+  config file should be in the following format::
+
+    [oauth]
+    client_id = XXXXXXXXXXXXXXXX
+    client_secret = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    refresh_token = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+  I haven't implemented the authorization and code exchange process, so one
+  needs to somehow obtain the refresh token on their own. ``python-onedrive``
+  could help in this regard (in fact, I just copied the refresh token from my
+  ``python-onedrive.yml``.
+
+* Note that ``onedrive/cli.py`` depends on the ``zmwangx.colorout`` module
+  (`link
+  <https://github.com/zmwangx/pyzmwangx/blob/master/zmwangx/colorout.py>`_) for
+  color printing of progress and errors. You may safely replace the
+  ``cprogress``, ``cerror``, and ``cfatal_error`` calls with standard
+  ``sys.stderr.write`` calls.
 
 Best practices
 --------------
@@ -55,10 +69,19 @@ Best practices
   to 30% slower (with timeouts accounted).
 
   Therefore, one should use nonstreaming workers (default) when there are only
-  a few jobs, and streaming workers (specifying the `-s, --streaming-upload`
+  a few jobs, and streaming workers (specifying the ``-s, --streaming-upload``
   option) if there are a great number of concurrent jobs.
 
 ..
    Local Variables:
    fill-column: 79
    End:
+
+Plans
+-----
+
+There are a couple of TODOs in the source code, waiting to be addressed.
+
+Apart from that, I might implement other features in the future (and there
+might be a rewrite, as I mentioned above). This is why I didn't name this as
+``pyonedrive-upload``.
