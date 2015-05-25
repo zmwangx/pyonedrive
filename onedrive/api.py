@@ -102,8 +102,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                             time.sleep(3)
 
                         try:
-                            status_response = requests.get(upload_url)
-                            onedrive.log.log_response(status_response, path=path)
+                            status_response = self.get(upload_url)
                         except requests.exceptions.RequestException as err:
                             logging.error(str(err))
                             raise
