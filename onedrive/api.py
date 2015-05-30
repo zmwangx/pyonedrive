@@ -11,6 +11,7 @@ import urllib.parse
 
 import requests
 
+import zmwangx.hash
 import zmwangx.pbar
 
 import onedrive.auth
@@ -25,13 +26,23 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         super().__init__()
 
     def upload(self, directory, local_path,
-               chunk_size=10485760, timeout=15, stream=False, show_progress_bar=False):
+               chunk_size=10485760, timeout=15,
+               stream=False, compare_hash=True, show_progress_bar=False):
         """Upload file using the resumable upload API."""
+
+        # check local file existence
+        if not os.path.exists(local_path):
+            raise OSError("'%s' does not exist" % local_path)
+        elif not os.path.isfile(local_path):
+            raise OSError("'%s' is not a file" % local_path)
+
+        # check remote file existence
         path = os.path.join(directory, os.path.basename(local_path))
         url = self.geturl(path)
         if url:
             raise OSError("'%s' already exists at %s" % (path, url))
 
+        # initiate upload session
         encoded_path = urllib.parse.quote(path)
         # TODO: customizable conflict behavior
         session_response = self.post("drive/root:/%s:/upload.createSession" % encoded_path,
@@ -46,12 +57,13 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         # not be valid throughout the lifetime of the session
         upload_url = urllib.parse.urlunparse(urllib.parse.urlparse(upload_url)._replace(query=""))
 
+        # calculate local file hash
+        if compare_hash:
+            local_sha1sum = zmwangx.hash.file_hash(local_path, "sha1").lower()
+            logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
+
         # TODO: save session
 
-        if not os.path.exists(local_path):
-            raise OSError("'%s' does not exist" % local_path)
-        elif not os.path.isfile(local_path):
-            raise OSError("'%s' is not a file" % local_path)
         canonical_path = os.path.realpath(local_path)
         total = os.path.getsize(canonical_path)
         pbar = zmwangx.pbar.ProgressBar(total) if show_progress_bar else None
@@ -143,6 +155,19 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 if pbar:
                     pbar.update(size)
             assert response.status_code in {200, 201}  # 200 OK or 201 Created
+
+            if compare_hash:
+                try:
+                    remote_sha1sum = response.json()["file"]["hashes"]["sha1Hash"].lower()
+                    logging.info("SHA-1 digest of remote file '%s': %s", path, remote_sha1sum)
+                except KeyError:
+                    raise KeyError("response JSON has no key file.hashes.sha1Hash")
+                if local_sha1sum != remote_sha1sum:
+                    msg = ("SHA-1 digest mismatch:\nlocal '%s': %s\nremote '%s': %s" %
+                           (local_path, local_sha1sum, path, remote_sha1sum))
+                    logging.error(msg)
+                    raise OSError("error: %s" % msg)
+
             if pbar:
                 pbar.finish()
 

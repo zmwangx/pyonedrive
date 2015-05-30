@@ -15,19 +15,23 @@ class Uploader(object):
     """Uploader that uploads files to a given OneDrive directory."""
 
     def __init__(self, client, directory,
-                 timeout=None, stream=False, show_progress_bar=False):
+                 timeout=None,
+                 stream=False, compare_hash=True, show_progress_bar=False):
         """Set client, directory, and parameters."""
         self._client = client
         self._directory = directory
         self._timeout = timeout
         self._stream = stream
+        self._compare_hash = compare_hash
         self._show_progress_bar = show_progress_bar
 
     def __call__(self, local_path):
         """Upload a local file."""
         try:
             self._client.upload(self._directory, local_path,
-                                timeout=self._timeout, stream=self._stream,
+                                timeout=self._timeout,
+                                stream=self._stream,
+                                compare_hash=self._compare_hash,
                                 show_progress_bar=self._show_progress_bar)
             cprogress("finished uploading '%s'" % local_path)
             return 0
@@ -53,6 +57,8 @@ def cli_upload():
     parser.add_argument("-j", "--jobs", type=int, default=8,
                         help="number of concurrect uploads, use 0 for unlimited; default is 8")
     parser.add_argument("-s", "--streaming-upload", action="store_true")
+    parser.add_argument("--no-check", action="store_true",
+                        help="do not compare checksum of local and remote files")
     args = parser.parse_args()
 
     onedrive.log.logging_setup()
@@ -73,7 +79,9 @@ def cli_upload():
     with multiprocessing.Pool(processes=jobs, maxtasksperchild=1) as pool:
         show_progress_bar = (num_files == 1) and zmwangx.pbar.autopbar()
         uploader = Uploader(client, directory,
-                            timeout=timeout, stream=args.streaming_upload,
+                            timeout=timeout,
+                            stream=args.streaming_upload,
+                            compare_hash=not args.no_check,
                             show_progress_bar=show_progress_bar)
         returncodes = []
         try:
