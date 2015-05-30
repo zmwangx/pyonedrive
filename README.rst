@@ -27,22 +27,28 @@ direct link to a remote directory).
        along the way, resulting in horrible code. I will be able to do it much
        cleaner if I ever get to rewrite this.
 
-Warnings
---------
+Installation
+------------
 
-* Note that this package depends on the ``zmwangx.colorout`` module (`link
-  <https://github.com/zmwangx/pyzmwangx/blob/master/zmwangx/colorout.py>`_) for
-  color printing of progress and errors, the ``zmwangx.hash`` module (`link
-  <https://github.com/zmwangx/pyzmwangx/blob/master/zmwangx/hash.py>`_) for
-  checksumming files, and the ``zmwangx.pbar`` module (`link
-  <https://github.com/zmwangx/pyzmwangx/blob/master/zmwangx/pbar.py>`_) module
-  for displaying progress bar. You may install the ``zmwangx`` package by
-  running::
+Clone the repository, then in the root of the directory, do::
 
-    pip install -r requirements.txt
+  pip install .
 
-  which installs the package through git. Use a virtualenv if you don't want to
-  pollute your environment.
+or::
+
+  ./setup.py install
+
+Note that some older versions of ``setuptools`` might not work; in that case,
+run ``pip install --upgrade pip`` first.
+
+Notes
+-----
+
+* Note that this package depends on some helper modules from my ``zmwangx``
+  package (`link <https://github.com/zmwangx/pyzmwangx>`_). ``setuptools`` will
+  automatically install the package through git (see the "Installation"
+  section).  Use a virtualenv if you don't want to pollute your global
+  environment.
 
 * One needs to save the credentials to ``~/.config/onedrive/conf.ini``. The
   config file should be in the following format::

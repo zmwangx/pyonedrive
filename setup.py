@@ -31,6 +31,7 @@ setuptools.setup(
     packages=['onedrive'],
     install_requires=[
         'requests',
+        'zmwangx>=0.1.31+g932db22',
     ],
     entry_points={
         'console_scripts': [
@@ -38,5 +39,8 @@ setuptools.setup(
             'onedrive-geturl=onedrive.cli:cli_geturl',
         ]
     },
+    dependency_links = [
+        'git+https://github.com/zmwangx/pyzmwangx.git@master#egg=zmwangx-0.1.31',
+    ],
     test_suite='tests',
 )
