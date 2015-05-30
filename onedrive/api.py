@@ -11,6 +11,7 @@ import urllib.parse
 
 import requests
 
+from zmwangx.colorout import cprogress
 import zmwangx.hash
 import zmwangx.pbar
 
@@ -59,14 +60,24 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         # calculate local file hash
         if compare_hash:
-            local_sha1sum = zmwangx.hash.file_hash(local_path, "sha1").lower()
+            if show_progress_bar:
+                cprogress("hashing progress:")
+            local_sha1sum = zmwangx.hash.file_hash(local_path, "sha1",
+                                                   show_progress_bar=show_progress_bar).lower()
             logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
 
         # TODO: save session
 
         canonical_path = os.path.realpath(local_path)
         total = os.path.getsize(canonical_path)
-        pbar = zmwangx.pbar.ProgressBar(total) if show_progress_bar else None
+        if show_progress_bar:
+            if compare_hash:
+                # print "upload progress:" to distinguish from hashing progress
+                cprogress("upload progress:")
+            pbar = zmwangx.pbar.ProgressBar(total)
+        else:
+            pbar = None
+            pbar = zmwangx.pbar.ProgressBar(total) if show_progress_bar else None
         with open(canonical_path, "rb") as fileobj:
             position = 0
             response = None
