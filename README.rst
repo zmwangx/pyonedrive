@@ -32,7 +32,9 @@ Warnings
 
 * Note that this package depends on the ``zmwangx.colorout`` module (`link
   <https://github.com/zmwangx/pyzmwangx/blob/master/zmwangx/colorout.py>`_) for
-  color printing of progress and errors, and the ``zmwangx.pbar`` module (`link
+  color printing of progress and errors, the ``zmwangx.hash`` module (`link
+  <https://github.com/zmwangx/pyzmwangx/blob/master/zmwangx/hash.py>`_) for
+  checksumming files, and the ``zmwangx.pbar`` module (`link
   <https://github.com/zmwangx/pyzmwangx/blob/master/zmwangx/pbar.py>`_) module
   for displaying progress bar. You may install the ``zmwangx`` package by
   running::
