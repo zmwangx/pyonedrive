@@ -2,49 +2,108 @@
 
 """Authenticate with OneDrive's API and make authenticated HTTP requests."""
 
-# TODO: implement authorization and code exchange dance
-
 import configparser
 import os
 import time
 import urllib.parse
+import webbrowser
 
 import requests
+
+import zmwangx.config
+from zmwangx.colorout import cprogress, cprompt
 
 import onedrive.log
 
 class OneDriveOAuthClient(object):
-    """Interface for dancing with OneDrive's OAuth."""
+    """Interface for dancing with OneDrive's OAuth.
+
+    Parameters
+    ----------
+    authorize : bool, optional
+        If ``authorize`` is ``True``, authorize the client and generate
+        a new refresh token (requires tty interaction); otherwise,
+        assume the refresh token is already present in the config file,
+        and raise if it is not available.
+
+    """
 
     API_ENDPOINT = "https://api.onedrive.com/v1.0/"
 
-    def __init__(self):
-        """Initialize with a readily usable access token."""
-        self._get_config_file()
-        self._get_credentials()
-        self.refresh_access_token()
-        self.client = requests.session()
-        self.client.params.update({"access_token": self._access_token})
+    def __init__(self, authorize=False):
+        """Initialize with a readily usable access token.
 
-    def _get_config_file(self):
-        """Get config file path."""
-        if "XDG_CONFIG_HOME" in os.environ:
-            self._config_file = os.path.join(os.environ["XDG_CONFIG_HOME"],
-                                             "onedrive", "conf.ini")
-        else:
-            self._config_file = os.path.expanduser("~/.config/onedrive/conf.ini")
+        Or additionally do the interactive authorization, if the
+        ``authorize`` parameter is set to ``True``.
 
-    def _get_credentials(self):
-        """Get OAuth credentials from config file."""
-        conf = configparser.ConfigParser()
-        conf.read(self._config_file)
+        """
+        conf = zmwangx.config.INIConfig("onedrive/conf.ini")
+        self._conf = conf
         self._client_id = conf["oauth"]["client_id"]
         self._client_secret = conf["oauth"]["client_secret"]
-        self._refresh_token = conf["oauth"]["refresh_token"]
         try:
             self._redirect_uri = conf["oauth"]["redirect_uri"]
         except KeyError:
-            self._redirect_uri = "http://localhost:8000"
+            self._redirect_uri = "https://login.live.com/oauth20_desktop.srf"
+
+        if authorize:
+            self.authorize_client()
+        else:
+            self._refresh_token = conf["oauth"]["refresh_token"]
+            self.refresh_access_token()
+
+        self.client = requests.session()
+        self.client.params.update({"access_token": self._access_token})
+
+    def authorize_client(self):
+        """Authorize the client using the code flow."""
+
+        # https://login.live.com/oauth20_authorize.srf?client_id={client_id}&scope={scope}
+        #  &response_type=code&redirect_uri={redirect_uri}
+
+        # get authorization code
+        auth_url = urllib.parse.urlunparse((
+            "https",  # scheme
+            "login.live.com",  # netloc
+            "oauth20_authorize.srf",  # path
+            "",  # params
+            urllib.parse.urlencode({
+                "client_id": self._client_id,
+                "scope": "wl.signin wl.offline_access onedrive.readwrite",
+                "response_type": "code",
+                "redirect_uri": self._redirect_uri,
+            }),  # query
+            "",  # fragment
+        ))
+        webbrowser.open(auth_url)
+
+        info=("You are being directed to your default web browser for authorization. "
+              "When done, copy the URL you are redirected to and paste it back here.")
+        prompt="Please enter the redirect URL: "
+        try:
+            redirect_url = cprompt(info=info, prompt=prompt)
+        except EOFError:
+            raise OSError("no input for the redirect URL prompt")
+        code = urllib.parse.parse_qs(urllib.parse.urlparse(redirect_url).query)["code"][0]
+
+        # redeem the code
+        payload = {
+            "client_id": self._client_id,
+            "redirect_uri": self._redirect_uri,
+            "client_secret": self._client_secret,
+            "code": code,
+            "grant_type": "authorization_code",
+        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        redeem_request = requests.post("https://login.live.com/oauth20_token.srf",
+                                        data=payload, headers=headers)
+        self._access_token = redeem_request.json()["access_token"]
+        self._refresh_token = redeem_request.json()["refresh_token"]
+
+        # rewrite config file
+        self._conf["oauth"]["refresh_token"] = self._refresh_token
+        self._conf.rewrite_configs()
+        cprogress("Refresh token generated and written.")
 
     def refresh_access_token(self):
         """Get new access token with refresh token."""
@@ -103,3 +162,10 @@ class OneDriveOAuthClient(object):
     def delete(self, url, **kwargs):
         """HTTP DELETE with OAuth."""
         return self.request("delete", url, **kwargs)
+
+def main():
+    """Authorization CLI."""
+    OneDriveOAuthClient(authorize=True)
+
+if __name__ == "__main__":
+    main()

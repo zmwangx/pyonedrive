@@ -30,11 +30,11 @@ direct link to a remote directory).
 Installation
 ------------
 
-Clone the repository, then in the root of the directory, do::
+Clone the repository, then in the root of the directory, do ::
 
   pip install .
 
-or::
+or ::
 
   ./setup.py install
 
