@@ -10,8 +10,8 @@ new API. For a more complete OneDrive solution in Python, see
 support — the new OneDrive API (see `#52
 <https://github.com/mk-fg/python-onedrive/issues/52>`_).
 
-Two console scripts are bundled with this package, ``onedrive-upload`` and
-``onedrive-geturl``.
+Three console scripts are bundled with this package, ``onedrive-auth``,
+``onedrive-geturl``, and ``onedrive-upload``.
 
 ``onedrive-upload``, according to my initial testing, is somewhat more reliable
 than the CLI shipped with ``python-onedrive``, as I have implemented retries
@@ -58,10 +58,14 @@ Notes
     client_secret = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
     refresh_token = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
-  I haven't implemented the authorization and code exchange process, so one
-  needs to somehow obtain the refresh token on their own. ``python-onedrive``
-  could help in this regard (in fact, I just copied the refresh token from my
-  ``python-onedrive.yml``.
+  In case one doesn't have the refresh token, it can be automatically generated
+  and written to the config file by running ::
+
+    onedrive-auth
+
+  (requires tty interaction). Just make sure ``client_id`` and
+  ``client_secret`` are present in the config file before running
+  ``onedrive-auth``.
 
 Best practices
 --------------
@@ -85,11 +89,6 @@ Best practices
   a few jobs, and streaming workers (specifying the ``-s, --streaming-upload``
   option) if there are a great number of concurrent jobs.
 
-..
-   Local Variables:
-   fill-column: 79
-   End:
-
 Plans
 -----
 
@@ -98,3 +97,8 @@ There are a couple of TODOs in the source code, waiting to be addressed.
 Apart from that, I might implement other features in the future (and there
 might be a rewrite, as I mentioned above). This is why I didn't name this as
 ``pyonedrive-upload``.
+
+..
+   Local Variables:
+   fill-column: 79
+   End:
