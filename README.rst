@@ -2,6 +2,8 @@
  pyonedrive
 ============
 
+*Warning: This package is Python-3 only.*
+
 This is a bare-bones and badly-written [#]_ OneDrive batch uploader, using the
 new API. For a more complete OneDrive solution in Python, see
 `mk-fg/python-onedrive

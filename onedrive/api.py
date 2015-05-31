@@ -3,6 +3,7 @@
 """OneDrive API client."""
 
 # TODO: define more meaningful exception classes
+# TODO: customizable conflict behavior
 
 import os
 import logging
@@ -43,42 +44,26 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         if url:
             raise OSError("'%s' already exists at %s" % (path, url))
 
-        # initiate upload session
-        encoded_path = urllib.parse.quote(path)
-        # TODO: customizable conflict behavior
-        session_response = self.post("drive/root:/%s:/upload.createSession" % encoded_path,
-                                     json={"@name.conflictBehavior": "fail"})
-        if session_response.status_code == 404:
-            raise OSError("directory '%s' does not exist on OneDrive" % directory)
-        try:
-            upload_url = session_response.json()["uploadUrl"]
-        except KeyError:
-            raise OSError("no 'uploadUrl' in response: %s" % session_response.text)
-        # remove access code from upload_url, since the access code may
-        # not be valid throughout the lifetime of the session
-        upload_url = urllib.parse.urlunparse(urllib.parse.urlparse(upload_url)._replace(query=""))
-
         # calculate local file hash
         if compare_hash:
             if show_progress_bar:
                 cprogress("hashing progress:")
-            local_sha1sum = zmwangx.hash.file_hash(local_path, "sha1",
-                                                   show_progress_bar=show_progress_bar).lower()
+            local_sha1sum = zmwangx.hash.file_hash(
+                local_path, "sha1", show_progress_bar=show_progress_bar).lower()
             logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
 
         # TODO: save session
+        upload_url = self._initiate_upload_session(path)
 
-        canonical_path = os.path.realpath(local_path)
-        total = os.path.getsize(canonical_path)
+        # initiliaze progress bar for the upload
         if show_progress_bar:
             if compare_hash:
                 # print "upload progress:" to distinguish from hashing progress
                 cprogress("upload progress:")
+            total = os.path.getsize(os.path.realpath(local_path))
             pbar = zmwangx.pbar.ProgressBar(total)
-        else:
-            pbar = None
-            pbar = zmwangx.pbar.ProgressBar(total) if show_progress_bar else None
-        with open(canonical_path, "rb") as fileobj:
+
+        with open(os.path.realpath(local_path), "rb") as fileobj:
             position = 0
             response = None
             weird_error = False
@@ -97,14 +82,20 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
                 if response.status_code in {200, 201, 202}:
                     weird_error = False
+                    position += size
+                    if show_progress_bar:
+                        pbar.update(size)
                 else:
+                    # TODO: straighten out the weird error thing --
+                    # probably hand over to a helper method to determine
+                    # if a "weird error" has occurred in order to
+                    # improve readability
                     if response.status_code == 401:  # 401 Unauthorized
                         # set the weird_error flag and sleep 30 seconds
                         weird_error = True
                         time.sleep(30)
                     elif response.status_code == 416:
                         try:
-                            # TODO: handle "Optimistic concurrency failure during fragmented upload"
                             if ((response.json()["error"]["innererror"]["code"] ==
                                  "fragmentRowCountCheckFailed")):
                                 # raise if encountered weird error twice in a row
@@ -128,43 +119,15 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                         else:
                             time.sleep(3)
 
-                        try:
-                            status_response = self.get(upload_url, path=path)
-                        except requests.exceptions.RequestException as err:
-                            logging.error(str(err))
-                            raise
-                        if status_response.status_code != 200:
-                            raise OSError("failed to request upload status; got HTTP %d: %s" %
-                                          (status_response.status_code, status_response.text))
-                        expected_ranges = status_response.json()["nextExpectedRanges"]
-
-                        # no remaining range
-                        if not expected_ranges:
-                            time.sleep(15)
-                            if self.exists(path):
-                                return
-                            else:
-                                raise OSError("no missing ranges, "
-                                              "but '%s' does not exist on OneDrive" % path)
-
-                        # multi-range not implemented
-                        if len(expected_ranges) > 1:
-                            raise NotImplementedError(
-                                "got ranges %s; multi-range upload not implemented"
-                                % str(expected_ranges))
-
-                        # single range, set new position
-                        position = int(expected_ranges[0].split("-")[0])
-                        if pbar:
+                        position = self._get_upload_position(path, upload_url)
+                        if show_progress_bar:
                             pbar.force_update(position)
                         continue
 
                     raise OSError("got HTTP %d: %s" %
                                   (response.status_code, response.text))
 
-                position += size
-                if pbar:
-                    pbar.update(size)
+            # finished uploading the entire file
             assert response.status_code in {200, 201}  # 200 OK or 201 Created
 
             if compare_hash:
@@ -179,8 +142,53 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                     logging.error(msg)
                     raise OSError("error: %s" % msg)
 
-            if pbar:
+            if show_progress_bar:
                 pbar.finish()
+
+    # TODO: saved_session parameter for automatically writing the session to disk
+    def _initiate_upload_session(self, path):
+        """Initiate a resumable upload session and return the upload URL."""
+        encoded_path = urllib.parse.quote(path)
+        session_response = self.post("drive/root:/%s:/upload.createSession" % encoded_path,
+                                     json={"@name.conflictBehavior": "fail"})
+        if session_response.status_code == 404:
+            raise OSError("directory '%s' does not exist on OneDrive" % directory)
+        try:
+            upload_url = session_response.json()["uploadUrl"]
+        except KeyError:
+            raise OSError("no 'uploadUrl' in response: %s" % session_response.text)
+        # remove access code from upload_url, since the access code may
+        # not be valid throughout the lifetime of the session
+        upload_url = urllib.parse.urlunparse(urllib.parse.urlparse(upload_url)._replace(query=""))
+        return upload_url
+
+    def _get_upload_position(self, path, upload_url):
+        """Get the postion to continue with the upload."""
+        try:
+            status_response = self.get(upload_url, path=path)
+        except requests.exceptions.RequestException as err:
+            logging.error(str(err))
+            raise
+        if status_response.status_code != 200:
+            raise OSError("failed to request upload status; got HTTP %d: %s" %
+                          (status_response.status_code, status_response.text))
+        expected_ranges = status_response.json()["nextExpectedRanges"]
+
+        # no remaining range
+        if not expected_ranges:
+            time.sleep(30)
+            if self.exists(path):
+                return
+            else:
+                raise OSError("no missing ranges, but '%s' does not exist on OneDrive" % path)
+
+        # multi-range not implemented
+        if len(expected_ranges) > 1:
+            raise NotImplementedError("got ranges %s; multi-range upload not implemented" %
+                                      str(expected_ranges))
+
+        # single range, return position
+        return int(expected_ranges[0].split("-")[0])
 
     def exists(self, path):
         """Check if file or directory exists in OneDrive."""
