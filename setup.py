@@ -10,7 +10,7 @@ with open(os.path.join(here, 'README.rst')) as readme:
 
 setuptools.setup(
     name='onedrive',
-    version='0.0.1dev',
+    version='0.1dev',
     description='bare bones OneDrive uploader',
     long_description=long_description,
     url='https://github.com/zmwangx/pyonedrive',
@@ -18,7 +18,7 @@ setuptools.setup(
     author_email='zmwangx@gmail.com',
     license='MIT',
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 4 - Beta',
         'Intended Audience :: End Users/Desktop',
         'Topic :: Internet',
         'License :: OSI Approved :: MIT License',
