@@ -69,11 +69,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             position = 0
 
         # initiliaze progress bar for the upload
+        total = os.path.getsize(os.path.realpath(local_path))
         if show_progress_bar:
             if compare_hash:
                 # print "upload progress:" to distinguish from hashing progress
                 cprogress("upload progress:")
-            total = os.path.getsize(os.path.realpath(local_path))
             pbar = zmwangx.pbar.ProgressBar(total, preprocessed=position)
 
         with open(os.path.realpath(local_path), "rb") as fileobj:
