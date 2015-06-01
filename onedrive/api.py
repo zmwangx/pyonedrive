@@ -2,7 +2,6 @@
 
 """OneDrive API client."""
 
-# TODO: define more meaningful exception classes
 # TODO: customizable conflict behavior
 
 import os
@@ -17,9 +16,11 @@ import zmwangx.hash
 import zmwangx.pbar
 
 import onedrive.auth
+import onedrive.exceptions
 import onedrive.log
 import onedrive.save
 import onedrive.upload_helper
+import onedrive.util
 
 class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
     """OneDrive API client."""
@@ -35,15 +36,15 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         # check local file existence
         if not os.path.exists(local_path):
-            raise OSError("'%s' does not exist" % local_path)
+            raise FileNotFoundError("'%s' does not exist" % local_path)
         elif not os.path.isfile(local_path):
-            raise OSError("'%s' is not a file" % local_path)
+            raise IsADirectoryError("'%s' is a directory" % local_path)
 
         # check remote file existence
         path = os.path.join(directory, os.path.basename(local_path))
         url = self.geturl(path)
         if url:
-            raise OSError("'%s' already exists at %s" % (path, url))
+            raise onedrive.exceptions.FileExistsError(path=path, url=url)
 
         # calculate local file hash
         if compare_hash:
@@ -62,8 +63,12 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             session = None
 
         if session:
+            if show_progress_bar:
+                filename = os.path.basename(local_path)
+                cprogress("%s: loaded unfinished session from disk" % filename)
+                cprogress("%s: retrieving upload session" % filename)
             upload_url = session.upload_url
-            position = self._get_upload_position(path, upload_url)
+            position = self._get_upload_position(path, upload_url, session)
         else:
             upload_url = self._initiate_upload_session(path, session)
             position = 0
@@ -109,8 +114,9 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 elif self._is_weird_upload_error(response):
                     if weird_error:
                         # twice in a row, raise
-                        raise NotImplementedError("got HTTP %d: %s; don't know what to do" %
-                                                  (response.status_code, response.text))
+                        raise onedrive.exceptions.UploadError(
+                            path=path, response=response, saved_session=session,
+                            request_desc="chunk upload request")
                     else:
                         # set the weird_error flag and wait
                         weird_error = True
@@ -121,7 +127,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                     time.sleep(30)
                 else:
                     time.sleep(3)
-                position = self._get_upload_position(path, upload_url)
+                position = self._get_upload_position(path, upload_url, session)
                 if show_progress_bar:
                     pbar.force_update(position)
 
@@ -135,12 +141,16 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                     remote_sha1sum = response.json()["file"]["hashes"]["sha1Hash"].lower()
                     logging.info("SHA-1 digest of remote file '%s': %s", path, remote_sha1sum)
                 except KeyError:
-                    raise KeyError("response JSON has no key file.hashes.sha1Hash")
+                    msg = "file created response has no key file.hashes.sha1Hash"
+                    raise onedrive.exceptions.UploadError(
+                        msg=msg, path=path, response=response, saved_session=session)
+
                 if local_sha1sum != remote_sha1sum:
                     msg = ("SHA-1 digest mismatch:\nlocal '%s': %s\nremote '%s': %s" %
                            (local_path, local_sha1sum, path, remote_sha1sum))
                     logging.error(msg)
-                    raise OSError("error: %s" % msg)
+                    raise onedrive.exceptions.UploadError(
+                        msg=msg, path=path, response=response, saved_session=session)
 
             # success
             if session:
@@ -158,23 +168,31 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         session_response = self.post("drive/root:/%s:/upload.createSession" % encoded_path,
                                      json={"@name.conflictBehavior": "fail"})
         if session_response.status_code == 404:
-            raise OSError("directory '%s' does not exist on OneDrive" %
-                          os.path.dirname(path))
+            raise onedrive.exceptions.FileNotFoundError(path=os.path.dirname(path),
+                                                        type="directory")
+        elif session_response.status_code != 200:
+            raise onedrive.exceptions.UploadError(
+                path=path, response=session_response, saved_session=session,
+                request_desc="upload session initiation request")
+
         try:
             upload_url = session_response.json()["uploadUrl"]
         except KeyError:
-            raise OSError("no 'uploadUrl' in response: %s" % session_response.text)
+            msg = ("no 'uploadUrl' in response: %s; cannot initiate upload session for '%s'" %
+                   (session_response.text, path))
+            raise onedrive.exceptions.UploadError(
+                msg=msg, path=path, response=session_response, saved_session=session)
 
         # remove access code from upload_url, since the access code may
         # not be valid throughout the lifetime of the session
-        upload_url = urllib.parse.urlunparse(urllib.parse.urlparse(upload_url)._replace(query=""))
+        upload_url = onedrive.util.pop_query_from_url(upload_url, "access_token")
 
         if session is not None:
             session.save(upload_url, session_response.json()["expirationDateTime"])
 
         return upload_url
 
-    def _get_upload_position(self, path, upload_url):
+    def _get_upload_position(self, path, upload_url, session=None):
         """Get the postion to continue with the upload."""
         try:
             status_response = self.get(upload_url, path=path)
@@ -182,8 +200,9 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             logging.error(str(err))
             raise
         if status_response.status_code != 200:
-            raise OSError("failed to request upload status; got HTTP %d: %s" %
-                          (status_response.status_code, status_response.text))
+            raise onedrive.exceptions.UploadError(
+                path=path, response=status_response, saved_session=session,
+                request_desc="upload session status request")
         expected_ranges = status_response.json()["nextExpectedRanges"]
 
         # no remaining range
@@ -192,12 +211,15 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             if self.exists(path):
                 return
             else:
-                raise OSError("no missing ranges, but '%s' does not exist on OneDrive" % path)
+                raise onedrive.exceptions.UploadError(
+                    msg="no missing ranges, but file still does not exist on OneDrive",
+                    path=path, response=status_response, saved_session=session)
 
         # multi-range not implemented
         if len(expected_ranges) > 1:
-            raise NotImplementedError("got ranges %s; multi-range upload not implemented" %
-                                      str(expected_ranges))
+            msg = "got ranges %s; multi-range upload not implemented" % str(expected_ranges)
+            raise onedrive.exceptions.UploadError(
+                msg=msg, path=path, response=status_response, saved_session=session)
 
         # single range, return position
         return int(expected_ranges[0].split("-")[0])
@@ -232,10 +254,12 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         """Check if file or directory exists in OneDrive."""
         return self.geturl(path) is not None
 
-    def geturl(self, path):
+    def geturl(self, path, to_raise=False):
         """Get URL for a file or directory.
 
-        Returns None if the requested item does not exist.
+        Returns ``None`` if the requested item does not exist (or raise
+        ``onedrive.exceptions.FileNotFoundError`` if ``to_raise`` is set
+        to ``True``).
 
         """
         encoded_path = urllib.parse.quote(path)
@@ -245,7 +269,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         if status_code == 200:
             return metadata_response.json()["webUrl"]
         elif status_code == 404:
-            return None
+            if to_raise:
+                raise onedrive.exceptions.FileNotFoundError(path=path, type="directory")
+            else:
+                return None
         else:
-            raise OSError("got HTTP %d upon metadata request for '%s': %s" %
-                          (status_code, path, metadata_response.text))
+            raise onedrive.exceptions.APIRequestError(
+                response=metadata_response,
+                request_desc="metadata request for '%s'" % path)

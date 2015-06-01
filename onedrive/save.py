@@ -23,7 +23,24 @@ import os
 import time
 
 class SavedUploadSession(object):
-    """Saved upload session."""
+    """Saved upload session.
+
+    Parameters
+    ----------
+    remote_path : str
+    sha1sum : str
+
+    Attributes
+    ----------
+    session_path : str
+        Path of saved session on disk.
+    upload_url : str
+        ``None`` when session hasn't been loaded or saved.
+    expires : int
+        POSIX timestamp. ``None`` when session hasn't been loaded or
+        saved.
+
+    """
     # pylint: disable=attribute-defined-outside-init,invalid-name
 
     def __init__(self, remote_path, sha1sum):

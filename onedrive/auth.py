@@ -56,7 +56,6 @@ class OneDriveOAuthClient(object):
     def authorize_client(self):
         """Authorize the client using the code flow."""
 
-
         # get authorization code
         #
         # authorization url:
@@ -83,7 +82,7 @@ class OneDriveOAuthClient(object):
         try:
             redirect_url = cprompt(info=info, prompt=prompt)
         except EOFError:
-            raise OSError("no input for the redirect URL prompt")
+            raise EOFError("no input for the redirect URL prompt")
         code = urllib.parse.parse_qs(urllib.parse.urlparse(redirect_url).query)["code"][0]
 
         # redeem the code

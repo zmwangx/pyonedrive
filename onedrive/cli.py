@@ -9,6 +9,7 @@ from zmwangx.colorout import cerror, cfatal_error, cprogress
 import zmwangx.pbar
 
 import onedrive.api
+import onedrive.exceptions
 import onedrive.log
 
 class Uploader(object):
@@ -35,13 +36,14 @@ class Uploader(object):
                                 show_progress_bar=self._show_progress_bar)
             cprogress("finished uploading '%s'" % local_path)
             return 0
+        except KeyboardInterrupt:
+            cerror("upload of '%s' interrupted" % local_path)
+            return 1
         # pylint: disable=broad-except
         except Exception as err:
             # catch any exception in a multiprocessing environment
-            cerror("error uploading '%s': %s" % (local_path, str(err)))
-            return 1
-        except KeyboardInterrupt:
-            cerror("upload of '%s' interrupted" % local_path)
+            cerror("failed to upload '%s': %s: %s" %
+                   (local_path, type(err).__name__, str(err)))
             return 1
 
 def cli_upload():
@@ -66,13 +68,13 @@ def cli_upload():
     client = onedrive.api.OneDriveAPIClient()
 
     directory = args.directory
-    directory_url = client.geturl(directory)
-    if directory_url:
-        cprogress("uploading to '%s'" % directory)
-        cprogress("directory URL: %s" % directory_url)
-    else:
-        cfatal_error("directory '%s' does not exist" % directory)
-        return 0
+    try:
+        directory_url = client.geturl(directory, to_raise=True)
+    except onedrive.exceptions.GeneralAPIException as err:
+        cfatal_error(str(err))
+        return 1
+    cprogress("preparing to upload to '%s'" % directory)
+    cprogress("directory URL: %s" % directory_url)
 
     num_files = len(args.local_paths)
     jobs = min(args.jobs, num_files) if args.jobs > 0 else num_files
@@ -100,10 +102,9 @@ def cli_geturl():
     onedrive.log.logging_setup()
     client = onedrive.api.OneDriveAPIClient()
 
-    url = client.geturl(args.path)
-    if url:
-        print(url)
+    try:
+        print(client.geturl(args.path, to_raise=True))
         return 0
-    else:
-        cerror("'%s' not found" % args.path)
+    except onedrive.exceptions.GeneralAPIException as err:
+        cerror("%s: %s", type(err).__name__, str(err))
         return 1
