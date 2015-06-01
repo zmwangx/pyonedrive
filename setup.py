@@ -30,8 +30,9 @@ setuptools.setup(
     keywords='onedrive upload',
     packages=['onedrive'],
     install_requires=[
+        'arrow',
         'requests',
-        'zmwangx>=0.1.32+gf43388b',
+        'zmwangx>=0.1.35+g1992153',
     ],
     entry_points={
         'console_scripts': [
@@ -41,7 +42,7 @@ setuptools.setup(
         ]
     },
     dependency_links = [
-        'git+https://github.com/zmwangx/pyzmwangx.git@master#egg=zmwangx-0.1.32',
+        'git+https://github.com/zmwangx/pyzmwangx.git@master#egg=zmwangx-0.1.35',
     ],
     test_suite='tests',
 )

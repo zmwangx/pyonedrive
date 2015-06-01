@@ -18,6 +18,7 @@ import zmwangx.pbar
 
 import onedrive.auth
 import onedrive.log
+import onedrive.save
 import onedrive.upload_helper
 
 class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
@@ -52,8 +53,20 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 local_path, "sha1", show_progress_bar=show_progress_bar).lower()
             logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
 
-        # TODO: save session
-        upload_url = self._initiate_upload_session(path)
+            # try to load a saved session, which is not available in no
+            # check mode (without checksumming, the file might be
+            # modified or even replaced, so resuming upload is a very
+            # bad idea)
+            session = onedrive.save.SavedUploadSession(path, local_sha1sum)
+        else:
+            session = None
+
+        if session:
+            upload_url = session.upload_url
+            position = self._get_upload_position(path, upload_url)
+        else:
+            upload_url = self._initiate_upload_session(path, session)
+            position = 0
 
         # initiliaze progress bar for the upload
         if show_progress_bar:
@@ -61,10 +74,9 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 # print "upload progress:" to distinguish from hashing progress
                 cprogress("upload progress:")
             total = os.path.getsize(os.path.realpath(local_path))
-            pbar = zmwangx.pbar.ProgressBar(total)
+            pbar = zmwangx.pbar.ProgressBar(total, preprocessed=position)
 
         with open(os.path.realpath(local_path), "rb") as fileobj:
-            position = 0
             response = None
             weird_error = False
             while position < total:
@@ -85,6 +97,12 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                     position += size
                     if show_progress_bar:
                         pbar.update(size)
+                elif response.status_code == 404:
+                    # start over
+                    upload_url = self._initiate_upload_session(path)
+                    position = 0
+                    if show_progress_bar:
+                        pbar.force_update(position)
                 else:
                     # TODO: straighten out the weird error thing --
                     # probably hand over to a helper method to determine
@@ -128,6 +146,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                                   (response.status_code, response.text))
 
             # finished uploading the entire file
+            if show_progress_bar:
+                pbar.finish()
             assert response.status_code in {200, 201}  # 200 OK or 201 Created
 
             if compare_hash:
@@ -142,12 +162,18 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                     logging.error(msg)
                     raise OSError("error: %s" % msg)
 
-            if show_progress_bar:
-                pbar.finish()
+            # success
+            if session:
+                session.discard()
 
-    # TODO: saved_session parameter for automatically writing the session to disk
-    def _initiate_upload_session(self, path):
-        """Initiate a resumable upload session and return the upload URL."""
+    def _initiate_upload_session(self, path, session=None):
+        """Initiate a resumable upload session and return the upload URL.
+
+        If the session parameter is given (a
+        onedrive.save.SavedUploadSession object), then the newly created
+        session is also saved to disk using the session.save call.
+
+        """
         encoded_path = urllib.parse.quote(path)
         session_response = self.post("drive/root:/%s:/upload.createSession" % encoded_path,
                                      json={"@name.conflictBehavior": "fail"})
@@ -157,9 +183,14 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             upload_url = session_response.json()["uploadUrl"]
         except KeyError:
             raise OSError("no 'uploadUrl' in response: %s" % session_response.text)
+
         # remove access code from upload_url, since the access code may
         # not be valid throughout the lifetime of the session
         upload_url = urllib.parse.urlunparse(urllib.parse.urlparse(upload_url)._replace(query=""))
+
+        if session is not None:
+            session.save(upload_url, session_response.json()["expirationDateTime"])
+
         return upload_url
 
     def _get_upload_position(self, path, upload_url):
