@@ -7,7 +7,9 @@ A saved session is ``~/.local/share/onedrive/saved_sessions/ID.json``, where
 SHA-1 digest of the file. It looks like::
 
 {
-    "upload_url": ...,
+    "remote_path": "...",
+    "sha1sum": "...",
+    "upload_url": "https://api.onedrive.com/up/...",
     "expires": 1433128563
 }
 
@@ -32,6 +34,8 @@ class SavedUploadSession(object):
 
     Attributes
     ----------
+    remote_path : str
+    sha1sum : str
     session_path : str
         Path of saved session on disk.
     upload_url : str
@@ -45,6 +49,8 @@ class SavedUploadSession(object):
 
     def __init__(self, remote_path, sha1sum):
         """Try to load saved upload session."""
+        self.remote_path = remote_path
+        self.sha1sum = sha1sum
         self.session_path = self._locate_saved_session(remote_path, sha1sum)
         self.load()
 
@@ -95,8 +101,12 @@ class SavedUploadSession(object):
         self.expires = arrow.get(expiration_datetime).timestamp
         os.makedirs(os.path.dirname(self.session_path), exist_ok=True)
         with open(self.session_path, "w", encoding="utf-8") as fp:
-            json.dump({"upload_url": self.upload_url, "expires": self.expires},
-                      fp, indent=4)
+            json.dump({
+                "remote_path": self.remote_path,
+                "sha1sum": self.sha1sum,
+                "upload_url": self.upload_url,
+                "expires": self.expires
+            }, fp, indent=4)
         logging.info("session %s saved", self.session_path)
 
     def discard(self):
@@ -106,5 +116,7 @@ class SavedUploadSession(object):
         except FileNotFoundError:
             pass
         logging.info("session %s discarded", self.session_path)
+        self.remote_path = None
+        self.sha1sum = None
         self.upload_url = None
         self.expires = None
