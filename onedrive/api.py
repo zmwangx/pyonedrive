@@ -97,53 +97,33 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                     position += size
                     if show_progress_bar:
                         pbar.update(size)
+                    continue
                 elif response.status_code == 404:
                     # start over
+                    weird_error = False
                     upload_url = self._initiate_upload_session(path)
                     position = 0
                     if show_progress_bar:
                         pbar.force_update(position)
-                else:
-                    # TODO: straighten out the weird error thing --
-                    # probably hand over to a helper method to determine
-                    # if a "weird error" has occurred in order to
-                    # improve readability
-                    if response.status_code == 401:  # 401 Unauthorized
-                        # set the weird_error flag and sleep 30 seconds
+                    continue
+                elif self._is_weird_upload_error(response):
+                    if weird_error:
+                        # twice in a row, raise
+                        raise NotImplementedError("got HTTP %d: %s; don't know what to do" %
+                                                  (response.status_code, response.text))
+                    else:
+                        # set the weird_error flag and wait
                         weird_error = True
                         time.sleep(30)
-                    elif response.status_code == 416:
-                        try:
-                            if ((response.json()["error"]["innererror"]["code"] ==
-                                 "fragmentRowCountCheckFailed")):
-                                # raise if encountered weird error twice in a row
-                                if weird_error:
-                                    raise NotImplementedError(
-                                        "got HTTP %d: %s; don't know what to do" %
-                                        (416, response.text))
-                                # set the weird_error flag and sleep 30 seconds
-                                weird_error = True
-                                time.sleep(30)
-                            else:
-                                weird_error = False
-                        except KeyError:
-                            pass
-                    else:
-                        weird_error = False
 
-                    if response.status_code in {416, 500, 502, 503, 504}:
-                        if response.status_code >= 500:
-                            time.sleep(30)
-                        else:
-                            time.sleep(3)
-
-                        position = self._get_upload_position(path, upload_url)
-                        if show_progress_bar:
-                            pbar.force_update(position)
-                        continue
-
-                    raise OSError("got HTTP %d: %s" %
-                                  (response.status_code, response.text))
+                # errored, retry
+                if response.status_code >= 500:
+                    time.sleep(30)
+                else:
+                    time.sleep(3)
+                position = self._get_upload_position(path, upload_url)
+                if show_progress_bar:
+                    pbar.force_update(position)
 
             # finished uploading the entire file
             if show_progress_bar:
@@ -178,7 +158,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         session_response = self.post("drive/root:/%s:/upload.createSession" % encoded_path,
                                      json={"@name.conflictBehavior": "fail"})
         if session_response.status_code == 404:
-            raise OSError("directory '%s' does not exist on OneDrive" % directory)
+            raise OSError("directory '%s' does not exist on OneDrive" %
+                          os.path.dirname(path))
         try:
             upload_url = session_response.json()["uploadUrl"]
         except KeyError:
@@ -220,6 +201,32 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         # single range, return position
         return int(expected_ranges[0].split("-")[0])
+
+    @staticmethod
+    def _is_weird_upload_error(response):
+        """Check if a response got during upload is unhandleable.
+
+        There are some errors lacking a known or implemented solution,
+        e.g., 401 Unauthorized when the request clearly carries the
+        required token. When these errors occur, the only we could do is
+        wait and try again, and if it still fails, raise.
+
+        """
+        # one known weird situation is fragmentRowCountCheckFailed (see
+        # https://github.com/zmwangx/pyonedrive/issues/1)
+        if response.status_code == 416:
+            try:
+                if ((response.json()["error"]["innererror"]["code"] ==
+                     "fragmentRowCountCheckFailed")):
+                    return True
+            except KeyError:
+                pass
+
+        # here are the codes with known solutions
+        if response.status_code in {200, 201, 202, 404, 416, 500, 502, 503, 504}:
+            return False
+
+        return True
 
     def exists(self, path):
         """Check if file or directory exists in OneDrive."""

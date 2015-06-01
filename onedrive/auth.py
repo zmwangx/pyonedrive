@@ -2,8 +2,6 @@
 
 """Authenticate with OneDrive's API and make authenticated HTTP requests."""
 
-import configparser
-import os
 import time
 import urllib.parse
 import webbrowser
@@ -58,10 +56,12 @@ class OneDriveOAuthClient(object):
     def authorize_client(self):
         """Authorize the client using the code flow."""
 
-        # https://login.live.com/oauth20_authorize.srf?client_id={client_id}&scope={scope}
-        #  &response_type=code&redirect_uri={redirect_uri}
 
         # get authorization code
+        #
+        # authorization url:
+        # https://login.live.com/oauth20_authorize.srf?client_id={client_id}&scope={scope}
+        #  &response_type=code&redirect_uri={redirect_uri}
         auth_url = urllib.parse.urlunparse((
             "https",  # scheme
             "login.live.com",  # netloc
@@ -77,9 +77,9 @@ class OneDriveOAuthClient(object):
         ))
         webbrowser.open(auth_url)
 
-        info=("You are being directed to your default web browser for authorization. "
-              "When done, copy the URL you are redirected to and paste it back here.")
-        prompt="Please enter the redirect URL: "
+        info = ("You are being directed to your default web browser for authorization. "
+                " When done, copy the URL you are redirected to and paste it back here.")
+        prompt = "Please enter the redirect URL: "
         try:
             redirect_url = cprompt(info=info, prompt=prompt)
         except EOFError:
@@ -96,7 +96,7 @@ class OneDriveOAuthClient(object):
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
         redeem_request = requests.post("https://login.live.com/oauth20_token.srf",
-                                        data=payload, headers=headers)
+                                       data=payload, headers=headers)
         self._access_token = redeem_request.json()["access_token"]
         self._refresh_token = redeem_request.json()["refresh_token"]
 

@@ -35,6 +35,7 @@ class Uploader(object):
                                 show_progress_bar=self._show_progress_bar)
             cprogress("finished uploading '%s'" % local_path)
             return 0
+        # pylint: disable=broad-except
         except Exception as err:
             # catch any exception in a multiprocessing environment
             cerror("error uploading '%s': %s" % (local_path, str(err)))

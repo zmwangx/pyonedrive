@@ -24,6 +24,7 @@ import time
 
 class SavedUploadSession(object):
     """Saved upload session."""
+    # pylint: disable=attribute-defined-outside-init,invalid-name
 
     def __init__(self, remote_path, sha1sum):
         """Try to load saved upload session."""
@@ -34,7 +35,8 @@ class SavedUploadSession(object):
         """Check if an upload session is already loaded."""
         return self.upload_url is not None
 
-    def _locate_saved_session(self, remote_path, sha1sum):
+    @staticmethod
+    def _locate_saved_session(remote_path, sha1sum):
         """Return path of the saved session on disk (might not exist)."""
         if "XDG_DATA_HOME" in os.environ:
             home = os.path.join(os.environ["XDG_DATA_HOME"], "onedrive")
