@@ -121,6 +121,9 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                         # set the weird_error flag and wait
                         weird_error = True
                         time.sleep(30)
+                else:
+                    # errored, but not weird
+                    weird_error = False
 
                 # errored, retry
                 if response.status_code >= 500:
