@@ -357,7 +357,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise onedrive.exceptions.FileNotFoundError(path=path)
         else:
             raise onedrive.exceptions.APIRequestError(
-                response=metadata_response,
+                response=children_response,
                 request_desc="children request for '%s'" % path)
 
     def list(self, path):
@@ -391,3 +391,68 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             return ("file", [metadata])
         else:
             return ("directory", self.children(path))
+
+    def download(self, path, compare_hash=True, show_progress_bar=False):
+        """Download a file from OneDrive.
+
+        Parameters
+        ----------
+        path : str
+            Remote path of file to download.
+        compare_hash : bool, optional
+            Whether to compare local and remote file hashes. Default is
+            ``True``.
+        show_progress_bar : bool, optional
+            Whether to display a progress bar. Default is ``False``.
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If the requested file is not found.
+        onedrive.exceptions.IsADirectoryError
+            If the requested item is a directory.
+        FileExistsError
+            If a file exists locally with the same filename.
+        onedrive.exceptions.CorruptedDownload
+            If the download appears corrupted (size or SHA-1 mismatch)
+
+        """
+        metadata = self.metadata(path)
+        if "folder" in metadata:
+            raise onedrive.exceptions.IsADirectoryError(path=path)
+        local_path = metadata["name"]
+        if os.path.exists(local_path):
+            raise FileExistsError("'%s' already exists locally" % local_path)
+
+        size = metadata["size"]
+        if show_progress_bar:
+            if compare_hash:
+                cprogress("download progress:")
+            pbar = zmwangx.pbar.ProgressBar(size)
+
+        download_request = requests.get(url=metadata["@content.downloadUrl"], stream=True)
+        tmp_path = "%s.part" % local_path
+        with open(tmp_path, "wb") as fileobj:
+            chunk_size = 65536
+            for chunk in download_request.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    fileobj.write(chunk)
+                if show_progress_bar:
+                    pbar.update(chunk_size)
+        if show_progress_bar:
+            pbar.finish()
+
+        local_size = os.path.getsize(tmp_path)
+        if size != local_size:
+            raise onedrive.exceptions.CorruptedDownloadError(
+                path=path, remote_size=size, local_size=local_size)
+        if compare_hash:
+            remote_sha1sum = metadata["file"]["hashes"]["sha1Hash"].lower()
+            if show_progress_bar:
+                cprogress("hashing progress:")
+            local_sha1sum = zmwangx.hash.file_hash(
+                tmp_path, "sha1", show_progress_bar=show_progress_bar).lower()
+            if remote_sha1sum != local_sha1sum:
+                raise onedrive.exceptions.CorruptedDownloadError(
+                    path=path, remote_sha1sum=remote_sha1sum, local_sha1sum=local_sha1sum)
+        os.rename(tmp_path, local_path)

@@ -4,30 +4,38 @@
 
 *Caution: This package is Python 3 only.*
 
-This is a bare-bones and badly-written [#]_ OneDrive batch uploader, using the
-new API. For a more complete OneDrive solution in Python, see
+This is a bare-bones and badly-written [#]_ OneDrive command line client, using
+the new API. For a more complete OneDrive solution in Python, see
 `mk-fg/python-onedrive
 <https://github.com/mk-fg/python-onedrive>`_. Unfortunately,
 ``python-onedrive`` does not support — and the maintainer has no plan to
 support — the new OneDrive API (see `#52
 <https://github.com/mk-fg/python-onedrive/issues/52>`_).
 
+.. [#] Yes, I cooked up convenient patches for all sorts of error scenarios
+       along the way, resulting in horrible code. I will be able to do it much
+       cleaner if I ever get to rewrite this.
+
+Features
+--------
+
+* Batch upload;
+* Batch download;
+* List directory contents;
+* Get item URL for viewing in web interface.
+
 Four console scripts are bundled with this package, ``onedrive-auth``,
 ``onedrive-geturl``, ``onedrive-ls``, and ``onedrive-upload``.
 
-``onedrive-upload``, according to my initial testing, is somewhat more reliable
-than the CLI shipped with ``python-onedrive``, as I have implemented retries
-and safeguards. It is also more likely to win out in the long run since
+``onedrive-upload``, according to my testing, is more reliable than the CLI
+shipped with ``python-onedrive``, as I have implemented retries and
+safeguards. It is also more likely to win out in the long run since
 ``python-onedrive`` uses a `semi-private BITS API
 <https://gist.github.com/rgregg/37ba8929768a62131e85>`_ that is subject to
 change. Howeever, speed is not great when few uploads are running concurrently
 (this is also the case for ``python-onedrive``); better use the Web interface
 in that case when it's not too much hessle (use ``onedrive-geturl`` to get a
 direct link to a remote directory).
-
-.. [#] Yes, I cooked up patches for a wide range of possible error scenarios
-       along the way, resulting in horrible code. I will be able to do it much
-       cleaner if I ever get to rewrite this.
 
 Installation
 ------------

@@ -2,6 +2,8 @@
 
 """CLI interfaces for this package."""
 
+# pylint: disable=broad-except
+
 import argparse
 import multiprocessing
 
@@ -40,7 +42,6 @@ class Uploader(object):
         except KeyboardInterrupt:
             cerror("upload of '%s' interrupted" % local_path)
             return 1
-        # pylint: disable=broad-except
         except Exception as err:
             # catch any exception in a multiprocessing environment
             cerror("failed to upload '%s': %s: %s" %
@@ -52,7 +53,7 @@ def cli_upload():
     parser = argparse.ArgumentParser()
     parser.add_argument("directory", help="remote directory to upload to")
     parser.add_argument("local_paths", metavar="PATH", nargs="+",
-                        help="path of local files to upload")
+                        help="path of local file to upload")
     parser.add_argument("--base-segment-timeout", type=float, default=15,
                         help="""base timeout for uploading a single
                         segment (10MiB) -- one second is added to this
@@ -168,3 +169,55 @@ def cli_ls():
     for item_stats in item_stats_list:
         print(format_string % item_stats)
     return 0
+
+class Downloader(object):
+    """Downloader that downloads files from OneDrive."""
+
+    def __init__(self, client, compare_hash=True, show_progress_bar=False):
+        """Set client and paramters."""
+        self._client = client
+        self._compare_hash = compare_hash
+        self._show_progress_bar = show_progress_bar
+
+    def __call__(self, path):
+        """Download a remote file."""
+        try:
+            self._client.download(path, compare_hash=self._compare_hash,
+                                  show_progress_bar=self._show_progress_bar)
+            cprogress("finished downloading '%s'" % path)
+            return 0
+        except KeyboardInterrupt:
+            cerror("download of '%s' interrupted" % path)
+            return 1
+        except Exception as err:
+            # catch any exception in a multiprocessing environment
+            cerror("failed to download '%s': %s: %s" %
+                   (path, type(err).__name__, str(err)))
+            return 1
+
+def cli_download():
+    """Download CLI."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("paths", metavar="PATH", nargs="+",
+                        help="path of remote file to download")
+    parser.add_argument("-j", "--jobs", type=int, default=0,
+                        help="number of concurrect downloads, use 0 for unlimited; default is 0")
+    parser.add_argument("--no-check", action="store_true",
+                        help="do not compare checksum of remote and local files")
+    args = parser.parse_args()
+
+    onedrive.log.logging_setup()
+    client = onedrive.api.OneDriveAPIClient()
+
+    num_files = len(args.paths)
+    jobs = min(args.jobs, num_files) if args.jobs > 0 else num_files
+    with multiprocessing.Pool(processes=jobs, maxtasksperchild=1) as pool:
+        show_progress_bar = (num_files == 1) and zmwangx.pbar.autopbar()
+        downloader = Downloader(client, compare_hash=not args.no_check,
+                                show_progress_bar=show_progress_bar)
+        returncodes = []
+        try:
+            returncodes = pool.map(downloader, args.paths, chunksize=1)
+        except KeyboardInterrupt:
+            returncodes.append(1)
+        return 1 if 1 in returncodes else 0
