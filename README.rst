@@ -12,8 +12,8 @@ new API. For a more complete OneDrive solution in Python, see
 support — the new OneDrive API (see `#52
 <https://github.com/mk-fg/python-onedrive/issues/52>`_).
 
-Three console scripts are bundled with this package, ``onedrive-auth``,
-``onedrive-geturl``, and ``onedrive-upload``.
+Four console scripts are bundled with this package, ``onedrive-auth``,
+``onedrive-geturl``, ``onedrive-ls``, and ``onedrive-upload``.
 
 ``onedrive-upload``, according to my initial testing, is somewhat more reliable
 than the CLI shipped with ``python-onedrive``, as I have implemented retries

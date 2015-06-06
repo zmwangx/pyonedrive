@@ -6,6 +6,7 @@ import argparse
 import multiprocessing
 
 from zmwangx.colorout import cerror, cfatal_error, cprogress
+import zmwangx.humansize
 import zmwangx.pbar
 
 import onedrive.api
@@ -69,7 +70,7 @@ def cli_upload():
 
     directory = args.directory
     try:
-        directory_url = client.geturl(directory, to_raise=True)
+        directory_url = client.geturl(directory)
     except onedrive.exceptions.GeneralAPIException as err:
         cfatal_error(str(err))
         return 1
@@ -103,8 +104,67 @@ def cli_geturl():
     client = onedrive.api.OneDriveAPIClient()
 
     try:
-        print(client.geturl(args.path, to_raise=True))
+        print(client.geturl(args.path))
         return 0
     except onedrive.exceptions.GeneralAPIException as err:
-        cerror("%s: %s", type(err).__name__, str(err))
+        cerror("%s: %s" % (type(err).__name__, str(err)))
         return 1
+
+def cli_ls():
+    """List items CLI."""
+    description = """Mimic ls on OneDrive items. By default the long
+    format is used: type, child count, size, name. Type is a single
+    character, d or -. Note that this differs from ls -l in several
+    ways: mode is only a single character, distinguishing files and
+    directories; link count is replaced by child count, and for files
+    this is -; size is human readable by default (use +h/++human to turn
+    off); there are no owner, group, creation time and modification time
+    columns. Use +l/++long to turn off long format."""
+    parser = argparse.ArgumentParser(description=description, prefix_chars="-+")
+    parser.add_argument("path", help="remote directory")
+    parser.add_argument("+h", "++human", action="store_false",
+                        help="turn off human readable format")
+    parser.add_argument("+l", "++long", action="store_false",
+                        help="turn off long format")
+    args = parser.parse_args()
+
+    onedrive.log.logging_setup()
+    client = onedrive.api.OneDriveAPIClient()
+
+    try:
+        itemtype, items = client.list(args.path)
+    except onedrive.exceptions.GeneralAPIException as err:
+        cerror("%s: %s" % (type(err).__name__, str(err)))
+        return 1
+
+    if not args.long:
+        for item in items:
+            print(item["name"])
+        return 0
+
+    # collect stat for each item
+    item_stats_list = []
+    for item in items:
+        itemtype = "d" if "folder" in item else "-"
+        try:
+            childcount_s = str(item["folder"]["childCount"])
+        except KeyError:
+            childcount_s = "-"
+        size = item["size"]
+        if args.human:
+            size_s = zmwangx.humansize.humansize(size, prefix="iec", unit="")
+        else:
+            size_s = str(size)
+        name = item["name"]
+        item_stats_list.append((itemtype, childcount_s, size_s, name))
+    # calculate max width of each field (except the last field: name)
+    widths = [0, 0, 0]
+    for item_stats in item_stats_list:
+        for field_index in range(3):
+            if len(item_stats[field_index]) > widths[field_index]:
+                widths[field_index] = len(item_stats[field_index])
+    # print
+    format_string = "%{widths[0]}s %{widths[1]}s %{widths[2]}s %s".format(widths=widths)
+    for item_stats in item_stats_list:
+        print(format_string % item_stats)
+    return 0

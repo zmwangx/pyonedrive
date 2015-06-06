@@ -253,16 +253,23 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         return True
 
-    def exists(self, path):
-        """Check if file or directory exists in OneDrive."""
-        return self.geturl(path) is not None
+    def metadata(self, path):
+        """Get metadata of a file or directory.
 
-    def geturl(self, path, to_raise=False):
-        """Get URL for a file or directory.
+        Returns
+        -------
+        metadata : dict
+            The JSON object as returned by the API:
+            https://dev.onedrive.com/items/get.htm.
 
-        Returns ``None`` if the requested item does not exist (or raise
-        ``onedrive.exceptions.FileNotFoundError`` if ``to_raise`` is set
-        to ``True``).
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If requested item is not found.
+
+        See Also
+        --------
+        list
 
         """
         encoded_path = urllib.parse.quote(path)
@@ -270,13 +277,115 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         metadata_response = self.get("drive/root:/%s" % encoded_path)
         status_code = metadata_response.status_code
         if status_code == 200:
-            return metadata_response.json()["webUrl"]
+            return metadata_response.json()
         elif status_code == 404:
-            if to_raise:
-                raise onedrive.exceptions.FileNotFoundError(path=path, type="directory")
-            else:
-                return None
+            raise onedrive.exceptions.FileNotFoundError(path=path)
         else:
             raise onedrive.exceptions.APIRequestError(
                 response=metadata_response,
                 request_desc="metadata request for '%s'" % path)
+
+    def exists(self, path):
+        """Check if file or directory exists in OneDrive.
+
+        Returns
+        -------
+        exists : bool
+
+        """
+        try:
+            self.metadata(path)
+            return True
+        except onedrive.exceptions.FileNotFoundError:
+            return False
+
+    def geturl(self, path):
+        """Get URL for a file or directory.
+
+        Returns
+        -------
+        url : str
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If requested item is not found.
+
+        """
+        metadata = self.metadata(path)
+        return metadata["webUrl"]
+
+    def children(self, path):
+        """List children of a directory.
+
+        Returns
+        -------
+        children : list
+            Returns a list of objects as returned by the children API
+            (https://dev.onedrive.com/items/list.htm). If the requested
+            item turns out to be a file, then the return value will be
+            an empty list.
+
+            Example return value for the children API (truncated)::
+
+                [
+                  {"name": "myfile.jpg", "size": 2048, "file": {} },
+                  {"name": "Documents", "folder": { "childCount": 4 } },
+                  {"name": "Photos", "folder": { "childCount": 203 } },
+                  {"name": "my sheet(1).xlsx", "size": 197 }
+                ]
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If the requested item is not found.
+
+        See Also
+        --------
+        list
+
+        """
+        encoded_path = urllib.parse.quote(path)
+        logging.info("requesting children of '%s'", encoded_path)
+        children_response = self.get("drive/root:/%s:/children" % encoded_path)
+        status_code = children_response.status_code
+        if status_code == 200:
+            return children_response.json()["value"]
+        elif status_code == 404:
+            raise onedrive.exceptions.FileNotFoundError(path=path)
+        else:
+            raise onedrive.exceptions.APIRequestError(
+                response=metadata_response,
+                request_desc="children request for '%s'" % path)
+
+    def list(self, path):
+        """List the file itself, or children of a directory.
+
+        Returns
+        -------
+        (type, items) : (str, list)
+            ``type`` is the type of the requested path, which is either
+            ``"file"`` or ``"directory"``.
+
+            For directories, ``items`` is a list of objects as returned
+            by the children API
+            (https://dev.onedrive.com/items/list.htm). For files,
+            ``items`` is a singleton with the metadata object as
+            returned by the metadata API
+            (https://dev.onedrive.com/items/get.htm).
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If the requested item is not found.
+
+        See Also
+        --------
+        children, metadata
+
+        """
+        metadata = self.metadata(path)
+        if "file" in metadata:
+            return ("file", [metadata])
+        else:
+            return ("directory", self.children(path))
