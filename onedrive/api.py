@@ -42,9 +42,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         # check remote file existence
         path = os.path.join(directory, os.path.basename(local_path))
-        url = self.geturl(path)
-        if url:
+        try:
+            url = self.geturl(path)
             raise onedrive.exceptions.FileExistsError(path=path, url=url)
+        except onedrive.exceptions.FileNotFoundError:
+            pass
 
         # calculate local file hash
         if compare_hash:
