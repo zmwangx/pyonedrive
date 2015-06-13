@@ -99,6 +99,16 @@ Best practices
   a few jobs, and streaming workers (specifying the ``-s, --streaming-upload``
   option) if there are a great number of concurrent jobs.
 
+Known issues
+------------
+
+* Despite the timeout, very occasionally a request made through the
+  ``requests`` module would stall, and there's little I can do in that case
+  since it defies my order. Check ``~/.local/share/onedrive/onedrive.log`` to
+  make sure the upload has really stalled (not your illusion). In that case,
+  don't panic; the upload is resumable. Just interrupt the upload (``^C``),
+  wait a minute or two, and try again.
+
 Plans
 -----
 
