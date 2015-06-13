@@ -456,3 +456,98 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 raise onedrive.exceptions.CorruptedDownloadError(
                     path=path, remote_sha1sum=remote_sha1sum, local_sha1sum=local_sha1sum)
         os.rename(tmp_path, local_path)
+
+    def makedirs(self, path, exist_ok=False):
+        """Recursively create directory.
+
+        Parameters
+        ----------
+        exist_ok : bool
+            If ``False``, ``onedrive.exceptions.FileExistsError`` is
+            raised when path already exists and is a directory. Default
+            is ``False``.
+
+        Returns
+        -------
+        metadata : dict
+            Metadata object of the created (or existing) directory, as
+            returned by a standard metadata request.
+
+        Exceptions
+        ----------
+        onedrive.exceptions.FileExistsError
+            If path already exists and is a directory (with ``exist_ok``
+            set to ``False``).
+        onedrive.exceptions.NotADirectoryError
+            If path or one of its intermediate paths exists and is not a
+            directory.
+
+        See Also
+        --------
+        mkdir
+
+        """
+        basename = os.path.basename(path)
+        dirname = os.path.dirname(path)
+        encoded_dirname = urllib.parse.quote(dirname)
+        makedirs_response = self.post(
+            "drive/root:/%s:/children" % encoded_dirname,
+            json={"name": basename, "folder": {}, "@name.conflictBehavior": "fail"})
+        status_code = makedirs_response.status_code
+        if status_code == 201:
+            return makedirs_response.json()
+        elif status_code == 409:  # Conflict
+            metadata = self.metadata(path)
+            if "file" in metadata:
+                msg = ("'%s' already exists at '%s' and is not a directory" %
+                       (path, metadata["webUrl"]))
+                raise onedrive.exceptions.NotADirectoryError(msg=msg)
+            else:
+                if exist_ok:
+                    return metadata
+                else:
+                    raise onedrive.exceptions.FileExistsError(
+                        path=path, type="directory", url=metadata["webUrl"])
+        elif status_code == 403:  # Forbidden (accessDenied)
+            msg = "one of the intermediate paths of '%s' is not a directory" % path
+            raise onedrive.exceptions.NotADirectoryError(msg=msg)
+        else:
+            raise onedrive.exceptions.APIRequestError(
+                response=makedirs_response,
+                request_desc="directory creation request for '%s'" % path)
+
+    def mkdir(self, path):
+        """Create a directory (no recursive).
+
+        Returns
+        -------
+        metadata : dict
+            Metadata object of the created directory, as returned by a
+            standard metadata request.
+
+        Exceptions
+        ----------
+        onedrive.exceptions.FileNotFoundError:
+            If the parent does not exist.
+        onedrive.exceptions.FileExistsError
+            If path already exists and is a directory.
+        onedrive.exceptions.NotADirectoryError
+            If the parent is not a directory.
+
+        See Also
+        --------
+        makedirs
+
+        """
+        dirname = os.path.dirname(path)
+        try:
+            parent_metadata = self.metadata(dirname)
+        except onedrive.exceptions.FileNotFoundError:
+            raise
+
+        if "file" in parent_metadata:
+            msg = ("parent '%s' (located at '%s') is not a directory" %
+                   (dirname, parent_metadata["webUrl"]))
+            raise onedrive.exceptions.NotADirectoryError(msg=msg)
+
+        return self.makedirs(path, exist_ok=False)

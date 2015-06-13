@@ -221,3 +221,30 @@ def cli_download():
         except KeyboardInterrupt:
             returncodes.append(1)
         return 1 if 1 in returncodes else 0
+
+def cli_mkdir():
+    """Make directory CLI."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("paths", metavar="DIRECTORY", nargs="+",
+                        help="path of remote directory to create")
+    parser.add_argument("-p", "--parents", action="store_true",
+                        help="no error if existing, make parent directories as needed")
+    args = parser.parse_args()
+
+    onedrive.log.logging_setup()
+    client = onedrive.api.OneDriveAPIClient()
+
+    returncode = 0
+    for path in args.paths:
+        try:
+            if args.parents:
+                metadata = client.makedirs(path, exist_ok=True)
+            else:
+                metadata = client.mkdir(path)
+            cprogress("directory '%s' created at '%s'" %
+                      (path, metadata["webUrl"]))
+        except Exception as err:
+            cerror("failed to create directory '%s': %s: %s" %
+                   (path, type(err).__name__, str(err)))
+            returncode = 1
+    return returncode

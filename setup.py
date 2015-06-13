@@ -39,6 +39,7 @@ setuptools.setup(
             'onedrive-auth=onedrive.auth:main',
             'onedrive-download=onedrive.cli:cli_download',
             'onedrive-geturl=onedrive.cli:cli_geturl',
+            'onedrive-mkdir=onedrive.cli:cli_mkdir',
             'onedrive-ls=onedrive.cli:cli_ls',
             'onedrive-upload=onedrive.cli:cli_upload',
         ]

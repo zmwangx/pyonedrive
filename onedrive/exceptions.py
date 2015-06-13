@@ -119,7 +119,6 @@ class IsADirectoryError(GeneralAPIException):
     msg : str, optional
     path : str, optional
         Remote path.
-    type : {None, "file", "directory"}, optional
 
     Attributes
     ----------
@@ -135,8 +134,34 @@ class IsADirectoryError(GeneralAPIException):
         if msg is not None:
             self.msg = msg
         else:
-            path_desc = "'%s'" % path if path is not None else "requested file"
-            self.msg = "%s not found on OneDrive" % path_desc
+            path_desc = "'%s'" % path if path is not None else "requested item"
+            self.msg = "%s is a directory" % path_desc
+
+class NotADirectoryError(GeneralAPIException):
+    """Requested item is not a directory.
+
+    Parameters
+    ----------
+    msg : str, optional
+    path : str, optional
+        Remote path.
+
+    Attributes
+    ----------
+    msg : str
+    path : str
+
+    """
+
+    def __init__(self, msg=None, path=None):
+        """Init."""
+        # pylint: disable=super-init-not-called
+        self.path = path
+        if msg is not None:
+            self.msg = msg
+        else:
+            path_desc = "'%s'" % path if path is not None else "requested item"
+            self.msg = "%s is not a directory" % path_desc
 
 class APIRequestError(GeneralAPIException):
     """An errored API request.
