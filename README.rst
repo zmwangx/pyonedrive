@@ -2,18 +2,18 @@
  pyonedrive
 ============
 
-*Caution: This package is Python 3 only.*
+*Caution: This package is Python 3.3+ only.*
 
-This is a bare-bones and badly-written [#]_ OneDrive command line client, using
-the new API. For a more complete OneDrive solution in Python, see
-`mk-fg/python-onedrive
+`pyonedrive` is a OneDrive command line client using the new API. The code
+quality isn't great, so don't hold your breath. [#]_ For a more complete
+OneDrive solution in Python, see `mk-fg/python-onedrive
 <https://github.com/mk-fg/python-onedrive>`_. Unfortunately,
 ``python-onedrive`` does not support — and the maintainer has no plan to
 support — the new OneDrive API (see `#52
 <https://github.com/mk-fg/python-onedrive/issues/52>`_).
 
 .. [#] Yes, I cooked up convenient patches for all sorts of error scenarios
-       along the way, resulting in horrible code. I will be able to do it much
+       along the way, resulting in horrible code. I will be able to do it
        cleaner if I ever get to rewrite this.
 
 Features
@@ -26,13 +26,14 @@ Features
 * Remove files and directories;
 * Get item URL for viewing in web interface.
 
-Five console scripts are bundled with this package:
+Seven console scripts are bundled with this package:
 
 * ``onedrive-auth``;
 * ``onedrive-geturl``;
 * ``onedrive-ls``;
 * ``onedrive-mkdir``;
 * ``onedrive-rm``;
+* ``onedrive-rmdir``;
 * ``onedrive-upload``.
 
 ``onedrive-upload``, according to my testing, is more reliable than the CLI
@@ -122,9 +123,9 @@ Plans
 
 There are a couple of TODOs in the source code, waiting to be addressed.
 
-Apart from that, I might implement other features in the future (and there
-might be a rewrite, as I mentioned above). This is why I didn't name this as
-``pyonedrive-upload``.
+Apart from that, I might implement addition features in the future, most likely
+when I personally need something (and there might be a rewrite, as I mentioned
+above).
 
 ..
    Local Variables:

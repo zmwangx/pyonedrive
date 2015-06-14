@@ -163,6 +163,32 @@ class NotADirectoryError(GeneralAPIException):
             path_desc = "'%s'" % path if path is not None else "requested item"
             self.msg = "%s is not a directory" % path_desc
 
+class PermissionError(GeneralAPIException):
+    """Trying to run an operation without the adequate access rights.
+
+    Parameters
+    ----------
+    msg : str, optional
+    path : str, optional
+        Remote path.
+
+    Attributes
+    ----------
+    msg : str
+    path : str
+
+    """
+
+    def __init__(self, msg=None, path=None):
+        """Init."""
+        # pylint: disable=super-init-not-called
+        self.path = path
+        if msg is not None:
+            self.msg = msg
+        else:
+            path_desc = "'%s'" % path if path is not None else "requested item"
+            self.msg = "unspecified permission error on %s" % path_desc
+
 class APIRequestError(GeneralAPIException):
     """An errored API request.
 

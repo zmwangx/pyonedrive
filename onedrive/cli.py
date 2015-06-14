@@ -252,8 +252,8 @@ def cli_mkdir():
 def cli_rm():
     """Remove CLI."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("paths", metavar="DIRECTORY", nargs="+",
-                        help="path of remote items to remove")
+    parser.add_argument("paths", metavar="PATH", nargs="+",
+                        help="path of remote item to remove")
     parser.add_argument("-r", "-R", "--recursive", action="store_true",
                         help="remove directories and their contents recursively")
     args = parser.parse_args()
@@ -266,6 +266,27 @@ def cli_rm():
         try:
             client.rm(path, recursive=args.recursive)
             cprogress("'%s' removed from OneDrive" % path)
+        except Exception as err:
+            cerror("failed to remove '%s': %s: %s" %
+                   (path, type(err).__name__, str(err)))
+            returncode = 1
+    return returncode
+
+def cli_rmdir():
+    """Remove empty directory CLI."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("paths", metavar="DIRECTORY", nargs="+",
+                        help="path of remote directory to remove")
+    args = parser.parse_args()
+
+    onedrive.log.logging_setup()
+    client = onedrive.api.OneDriveAPIClient()
+
+    returncode = 0
+    for path in args.paths:
+        try:
+            client.rmdir(path)
+            cprogress("directory '%s' removed from OneDrive" % path)
         except Exception as err:
             cerror("failed to remove '%s': %s: %s" %
                    (path, type(err).__name__, str(err)))

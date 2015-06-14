@@ -501,7 +501,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             if "file" in metadata:
                 msg = ("'%s' already exists at '%s' and is not a directory" %
                        (path, metadata["webUrl"]))
-                raise onedrive.exceptions.NotADirectoryError(msg=msg)
+                raise onedrive.exceptions.NotADirectoryError(msg=msg, path=path)
             else:
                 if exist_ok:
                     return metadata
@@ -510,7 +510,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                         path=path, type="directory", url=metadata["webUrl"])
         elif status_code == 403:  # Forbidden (accessDenied)
             msg = "one of the intermediate paths of '%s' is not a directory" % path
-            raise onedrive.exceptions.NotADirectoryError(msg=msg)
+            raise onedrive.exceptions.NotADirectoryError(msg=msg, path=path)
         else:
             raise onedrive.exceptions.APIRequestError(
                 response=makedirs_response,
@@ -548,7 +548,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         if "file" in parent_metadata:
             msg = ("parent '%s' (located at '%s') is not a directory" %
                    (dirname, parent_metadata["webUrl"]))
-            raise onedrive.exceptions.NotADirectoryError(msg=msg)
+            raise onedrive.exceptions.NotADirectoryError(msg=msg, path=path)
 
         return self.makedirs(path, exist_ok=False)
 
@@ -589,3 +589,31 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise onedrive.exceptions.APIRequestError(
                 response=makedirs_response,
                 request_desc="deletion request for '%s'" % path)
+
+    def rmdir(self, path):
+        """Remove an empty directory.
+
+        Exceptions
+        ----------
+        onedrive.exceptions.FileNotFoundError
+            If the item does not exist in the first place.
+        onedrive.exceptions.NotADirectoryError
+            If the item exists but is not a directory.
+        onedrive.exceptions.PermissionError
+            If the directory is not empty.
+
+        """
+        try:
+            metadata = self.metadata(path)
+        except onedrive.exceptions.FileNotFoundError:
+            raise
+
+        if "file" in metadata:
+            raise onedrive.exceptions.NotADirectoryError(path=path)
+
+        child_count = metadata["folder"]["childCount"]
+        if child_count > 0:
+            msg = "directory '%s' is not empty" % path
+            raise onedrive.exceptions.PermissionError(msg=msg, path=path)
+
+        self.rm(path, recursive=True)
