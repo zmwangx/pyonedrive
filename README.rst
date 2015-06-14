@@ -23,11 +23,17 @@ Features
 * Batch download;
 * Create directories;
 * List directory contents;
+* Remove files and directories;
 * Get item URL for viewing in web interface.
 
-Five console scripts are bundled with this package, ``onedrive-auth``,
-``onedrive-geturl``, ``onedrive-ls``, ``onedrive-mkdir``, and
-``onedrive-upload``.
+Five console scripts are bundled with this package:
+
+* ``onedrive-auth``;
+* ``onedrive-geturl``;
+* ``onedrive-ls``;
+* ``onedrive-mkdir``;
+* ``onedrive-rm``;
+* ``onedrive-upload``.
 
 ``onedrive-upload``, according to my testing, is more reliable than the CLI
 shipped with ``python-onedrive``, as I have implemented retries and

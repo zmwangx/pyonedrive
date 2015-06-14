@@ -41,6 +41,7 @@ setuptools.setup(
             'onedrive-geturl=onedrive.cli:cli_geturl',
             'onedrive-mkdir=onedrive.cli:cli_mkdir',
             'onedrive-ls=onedrive.cli:cli_ls',
+            'onedrive-rm=onedrive.cli:cli_rm',
             'onedrive-upload=onedrive.cli:cli_upload',
         ]
     },

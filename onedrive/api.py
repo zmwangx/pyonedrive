@@ -527,7 +527,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         Exceptions
         ----------
-        onedrive.exceptions.FileNotFoundError:
+        onedrive.exceptions.FileNotFoundError
             If the parent does not exist.
         onedrive.exceptions.FileExistsError
             If path already exists and is a directory.
@@ -551,3 +551,41 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise onedrive.exceptions.NotADirectoryError(msg=msg)
 
         return self.makedirs(path, exist_ok=False)
+
+    def rm(self, path, recursive=True):
+        """Remove an item.
+
+        Parameters
+        ----------
+        recursive : bool
+            If ``False``, raise
+            ``onedrive.exceptions.IsADirectoryError`` when the item
+            requested is a directory. Default is ``True``, i.e., remove
+            a directory and its children recursively.
+
+        Exceptions
+        ----------
+        onedrive.exceptions.FileNotFoundError
+            If the item does not exist in the first place.
+        onedrive.exceptions.IsADirectoryError
+            If ``recursive`` is set to ``False`` and the requested item
+            is a directory.
+
+        """
+        encoded_path = urllib.parse.quote(path)
+
+        if not recursive:
+            metadata = self.metadata(path)
+            if "folder" in metadata:
+                raise onedrive.exceptions.IsADirectoryError(path=path)
+
+        delete_response = self.delete("drive/root:/%s" % encoded_path)
+        status_code = delete_response.status_code
+        if status_code == 204:
+            return
+        elif status_code == 404:
+            raise onedrive.exceptions.FileNotFoundError(path=path)
+        else:
+            raise onedrive.exceptions.APIRequestError(
+                response=makedirs_response,
+                request_desc="deletion request for '%s'" % path)
