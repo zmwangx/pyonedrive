@@ -118,6 +118,13 @@ Known issues
   don't panic; the upload is resumable. Just interrupt the upload (``^C``),
   wait a minute or two, and try again.
 
+* When copying items from the command line, you might see weird "actions in
+  progress..." in the web interface. Just don't panic and don't click cancel.
+
+  In fact, at the moment of writing, the copy API is not very reliable (it
+  might randomly fail on large files, e.g., those greater than 1GB). The API is
+  labeled as preview though (2015-06-15), so hopefully it will get better.
+
 Plans
 -----
 

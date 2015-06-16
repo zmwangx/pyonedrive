@@ -617,3 +617,200 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise onedrive.exceptions.PermissionError(msg=msg, path=path)
 
         self.rm(path, recursive=True)
+
+    def move_or_copy(self, action, path, new_parent=None, new_name=None, overwrite=False,
+                     block=True, monitor_interval=1, show_progress=False):
+        """Move or copy an item.
+
+        https://dev.onedrive.com/items/move.htm.
+        https://dev.onedrive.com/items/copy.htm.
+
+        Parameters
+        ----------
+        action : {"move", "copy"}
+            Select an action.
+        path : str
+            Old path.
+        new_parent : str, optional
+            Path to new parent. If ``None``, set to the original
+            parent. Default is ``None``.
+        new_name : str, optional
+            New name (basename) of the item. If ``None``, set to the
+            original name. Default is ``None``.
+        overwrite : bool, optional
+            Whether to overwrite in the case of a conflict. Default is
+            ``False``.
+        block : bool, optional
+            Whether to block until copy completes or errors (only useful
+            when action is copy). Default is ``True``.
+        monitor_interval : float, optional
+            Only useful when action is copy. See ``monitor_copy``.
+        show_progress : bool, optional
+            Only useful when action is copy. See ``monitor_copy``.
+
+        Returns
+        -------
+        monitor_url : str
+            If action is copy and ``block`` is set to ``True``, then
+            return the URL for monitoring copy status (which can be
+            passed to ``monitor_copy``); otherwise, return nothing.
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If ``path`` or ``new_parent`` does not exist.
+        onedrive.exceptions.FileExistsError
+            If the source and destination are the same item (whether
+            ``overwrite`` or not); or if ``overwrite`` is ``False`` and
+            the destination item already exists.
+        onedrive.excpetions.CopyError
+            If action is copy, ``block`` is ``True``, and the copy
+            operation fails.
+
+        See Also
+        --------
+        monitor_copy, move, copy, mv, cp
+
+        """
+        if action not in {"move", "copy"}:
+            raise ValueError("unknow action '%s'; should be 'move' or 'copy'" % action)
+        new_parent = os.path.dirname(path) if new_parent is None else new_parent
+        new_name = os.path.basename(path) if new_name is None else new_name
+        new_path = os.path.join(new_parent, new_name)
+        if os.path.abspath(path) == os.path.abspath(new_path):
+            actioning = "moving" if action is "move" else "copying"
+            msg = "'%s': %s to the same item" % (path, actioning)
+            raise onedrive.exceptions.FileExistsError(msg=msg, path=path)
+
+        # check source item existence
+        if not self.exists(path):
+            raise onedrive.exceptions.FileNotFoundError(path=path)
+
+        # delete existing destination if overwrite
+        if overwrite:
+            try:
+                self.rm(new_path, recursive=True)
+            except onedrive.exceptions.FileNotFoundError:
+                pass
+        else:
+            # if copying and not overwrite, check if destination exists,
+            # since the API won't immediately respond with HTTP 409
+            # Conflict, but rather, return rather return an HTTP 500
+            # Internal Server Error when one later queries the async job
+            # status.
+            if action == "copy":
+                if self.exists(new_path):
+                    raise onedrive.exceptions.FileExistsError(path=new_path)
+
+        # make request
+        encoded_path = urllib.parse.quote(path)
+        encoded_new_parent = urllib.parse.quote(new_parent)
+        method = "patch" if action == "move" else "post"
+        endpoint = ("drive/root:/%s" % encoded_path if action == "move" else
+                    "drive/root:/%s:/action.copy" % encoded_path)
+        headers = {} if action == "move" else {"prefer": "respond-async"}
+        response = self.request(method, endpoint, headers=headers, json={
+            "parentReference": {"path": "/drive/root:/%s" % encoded_new_parent},
+            "name": new_name,
+        })
+        status_code = response.status_code
+
+        if status_code == 200:
+            # successful move
+            return
+        elif status_code == 202:
+            # copy: accepted
+            monitor_url = onedrive.util.pop_query_from_url(response.headers["location"],
+                                                           "access_token")
+            if block:
+                self.monitor_copy(monitor_url,
+                                  monitor_interval=monitor_interval,
+                                  show_progress=show_progress,
+                                  src=path, dst=new_path)
+            else:
+                return monitor_url
+
+        # HTTP 400 (invalidArgument) seems to be returned when trying to
+        # move an item that is recently moved; seems to be a bug on the
+        # server side. Anyway, we treats it just like 404 for now.
+        elif status_code in {400, 404}:
+            # API says not found; but we already checked the existence
+            # of source, so what is not found must be the new parent.
+            raise onedrive.exceptions.FileNotFoundError(path=new_parent)
+        elif status_code == 409:
+            # conflict
+            raise onedrive.exceptions.FileExistsError(path=new_path)
+        else:
+            raise onedrive.exceptions.APIRequestError(
+                response=response,
+                request_desc="%s request for '%s'" % (action, path))
+
+    def monitor_copy(self, monitor_url, monitor_interval=1,
+                     show_progress=False, src=None, dst=None):
+        """
+        Monitor an async copy job.
+
+        Parameters
+        ----------
+        monitor_url : str
+            A monitor URL returned by the copy API. See
+            https://dev.onedrive.com/items/copy.htm.
+        monitor_interval : float, optional
+            Interval between two status queries, in seconds. Default is
+            ``1``.
+        show_progress : bool, optional
+            Whether to print textual progress information to
+            stderr. Default is ``False``.
+        src, dst : str
+            Source and destination paths. Used for informational purpose
+            only. Defaults are ``None``.
+
+        Raises
+        ------
+        onedrive.exceptions.CopyError
+           If the copy operation failed or was cancelled.
+
+        """
+        src_desc = "unspecified item" if src is None else "'%s'" % src
+        dst_desc = "unspecified item" if dst is None else "'%s'" % dst
+        if show_progress:
+            cprogress("copying %s to %s" % (src_desc, dst_desc))
+            ptext = zmwangx.pbar.ProgressText(init_text="copying")
+        while True:
+            status_response = self.get(monitor_url)
+            status_code = status_response.status_code
+            if status_code in {200, 303}:
+                if show_progress:
+                    ptext.finish("finished copying")
+                return
+            elif status_code == 202:
+                if show_progress:
+                    status = status_response.json()
+                    text = "%s: %s" % (status["status"], status["statusDescription"])
+                    ptext.text(text)
+            elif status_code == 500:
+                if show_progress:
+                    status = status_response.json()
+                    text = "%s: %s" % (status["status"], status["statusDescription"])
+                    ptext.finish(text)
+                raise onedrive.exceptions.CopyError(src=src, dst=dst, response=status_response)
+            else:
+                if show_progress:
+                    ptext.finish("unknown error occurred")
+                raise onedrive.exceptions.APIRequestError(
+                    response=status_response,
+                    request_desc="copying status request for '%s' to '%s'" % (action, src, dst))
+            time.sleep(monitor_interval)
+        pass
+
+    def move(self, *args, **kwargs):
+        """
+        Same as ``self.move_or_copy("move", *args, **kwargs)``.
+        """
+        return self.move_or_copy("move", *args, **kwargs)
+
+    def copy(self, *args, **kwargs):
+        """
+        Same as ``self.move_or_copy("copy", *args, **kwargs)``.
+        """
+        return self.move_or_copy("copy", *args, **kwargs)

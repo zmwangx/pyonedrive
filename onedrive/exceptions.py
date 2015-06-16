@@ -248,15 +248,52 @@ class UploadError(APIRequestError):
 
     """
 
-    def __init__(self, msg=None, path=None, response=None, request_desc=None, saved_session=None):
+    def __init__(self, msg=None, path=None, response=None, saved_session=None):
         """Init."""
-        super().__init__(msg=msg, response=response, request_desc=request_desc)
+        # pylint: disable=super-init-not-called
+        self.msg = msg
         self.path = path
+        self.response = response
+        self.saved_session = saved_session
         if msg is None:
             path_desc = "'%s'" % path if path is not None else "unspecified file"
             self.msg = "error occured when trying to upload %s; %s" % (path_desc, self.msg)
         if saved_session:
             self.msg += "; session saved to '%s'" % saved_session.session_path
+
+class CopyError(APIRequestError):
+    """A special type of ``APIRequestError`` for error during copy operation.
+
+    Parameters
+    ----------
+    msg : str, optional
+    src, dst : str, optional
+        Source and destination paths.
+    response : requests.Response, optional
+    request_desc : str, optional
+
+    Attributes
+    ----------
+    msg : str
+    path : str
+    response : requests.Response
+    request_desc : str
+
+    """
+
+    def __init__(self, msg=None, src=None, dst=None, response=None):
+        """Init."""
+        # pylint: disable=super-init-not-called
+        self.msg = msg
+        self.src = src
+        self.dst = dst
+        self.response = response
+        if msg is None:
+            src_desc = "unspecified item" if src is None else "'%s'" % src
+            dst_desc = "unspecified item" if dst is None else "'%s'" % dst
+            self.msg = "failed to copy '%s' to '%s'" % (src_desc, dst_desc)
+            if response is not None:
+                self.msg += ": %s" % response.text
 
 class CorruptedDownloadError(GeneralOneDriveException):
     """Exception for a corrupted download."""
