@@ -24,13 +24,14 @@ Features
 * Create directories;
 * List directory contents;
 * Remove files and directories;
-* Get item URL for viewing in web interface.
+* Get item URL for viewing in web interface (among other metadata).
 
-Seven console scripts are bundled with this package:
+The following console scripts are bundled with this package:
 
 * ``onedrive-auth``;
 * ``onedrive-geturl``;
 * ``onedrive-ls``;
+* ``onedrive-metadata``;
 * ``onedrive-mkdir``;
 * ``onedrive-rm``;
 * ``onedrive-rmdir``;

@@ -5,6 +5,7 @@
 # pylint: disable=broad-except
 
 import argparse
+import json
 import multiprocessing
 
 from zmwangx.colorout import cerror, cfatal_error, cprogress
@@ -104,11 +105,16 @@ def cli_geturl():
     onedrive.log.logging_setup()
     client = onedrive.api.OneDriveAPIClient()
 
+    path = args.path
     try:
-        print(client.geturl(args.path))
+        print(client.geturl(path))
         return 0
-    except onedrive.exceptions.GeneralAPIException as err:
-        cerror("%s: %s" % (type(err).__name__, str(err)))
+    except onedrive.exceptions.FileNotFoundError:
+        cerror("'%s' not found on OneDrive" % path)
+        return 1
+    except Exception as err:
+        cerror("failed to get URL for '%s': %s: %s" %
+               (path, type(err).__name__, str(err)))
         return 1
 
 def cli_ls():
@@ -292,3 +298,23 @@ def cli_rmdir():
                    (path, type(err).__name__, str(err)))
             returncode = 1
     return returncode
+def cli_metadata():
+    """Display metadata CLI."""
+    parser = argparse.ArgumentParser(description="Dump JSON metadata of item.")
+    parser.add_argument("path", help="remote path (file or directory)")
+    args = parser.parse_args()
+
+    onedrive.log.logging_setup()
+    client = onedrive.api.OneDriveAPIClient()
+
+    path = args.path
+    try:
+        print(json.dumps(client.metadata(path), indent=4))
+        return 0
+    except onedrive.exceptions.FileNotFoundError:
+        cerror("'%s' not found on OneDrive" % path)
+        return 1
+    except Exception as err:
+        cerror("failed to get URL for '%s': %s: %s" %
+               (path, type(err).__name__, str(err)))
+        return 1
