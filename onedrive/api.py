@@ -808,7 +808,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             except onedrive.exceptions.PermissionError:
                 break
 
-    def move_or_copy(self, action, path, new_parent=None, new_name=None, overwrite=False,
+    def move_or_copy(self, action, src, dst, overwrite=False,
                      block=True, monitor_interval=1, show_progress=False):
         """Move or copy an item.
 
@@ -819,17 +819,17 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         ----------
         action : {"move", "copy"}
             Select an action.
-        path : str
-            Old path.
-        new_parent : str, optional
-            Path to new parent. If ``None``, set to the original
-            parent. Default is ``None``.
-        new_name : str, optional
-            New name (basename) of the item. If ``None``, set to the
-            original name. Default is ``None``.
+        src : str
+            Source item path.
+        dst : dst
+            Destination item path (including both dirname and basename).
         overwrite : bool, optional
             Whether to overwrite in the case of a conflict. Default is
-            ``False``.
+            ``False``. Note that even when this is set to ``True``, the
+            destination won't be overwritten if it is not of the same
+            type as the source (i.e., source is file but dest is
+            directory, or the other way round), or if it is a nonempty
+            directory.
         block : bool, optional
             Whether to block until copy completes or errors (only useful
             when action is copy). Default is ``True``.
@@ -848,11 +848,18 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         Raises
         ------
         onedrive.exceptions.FileNotFoundError
-            If ``path`` or ``new_parent`` does not exist.
+            If source or the parent of the destination does
+            not exist.
+        onedrive.exceptions.NotADirectoryError
+            If the parent of the destination exists but is not a
+            directory.
         onedrive.exceptions.FileExistsError
             If the source and destination are the same item (whether
             ``overwrite`` or not); or if ``overwrite`` is ``False`` and
             the destination item already exists.
+        onedrive.exceptions.PermissionError
+            If trying to overwrite a dest with a source of a different
+            type, or trying to overwrite a nonempty directory.
         onedrive.excpetions.CopyError
             If action is copy, ``block`` is ``True``, and the copy
             operation fails.
@@ -864,35 +871,58 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         """
         if action not in {"move", "copy"}:
             raise ValueError("unknow action '%s'; should be 'move' or 'copy'" % action)
-        new_parent = os.path.dirname(path) if new_parent is None else new_parent
-        new_name = os.path.basename(path) if new_name is None else new_name
-        new_path = os.path.join(new_parent, new_name)
-        if os.path.abspath(path) == os.path.abspath(new_path):
+
+        # check source and dest are not the same item
+        if os.path.abspath(src) == os.path.abspath(dst):
             actioning = "moving" if action is "move" else "copying"
-            msg = "'%s': %s to the same item" % (path, actioning)
-            raise onedrive.exceptions.FileExistsError(msg=msg, path=path)
+            msg = "'%s': %s to the same item" % (src, actioning)
+            raise onedrive.exceptions.FileExistsError(msg=msg, path=src)
 
-        # check source item existence
-        self.assert_exists(path)
+        # confirm source item existence and store metadata for future use
+        try:
+            src_metadata = self.metadata(src)
+        except onedrive.exceptions.FileNotFoundError:
+            raise
 
-        # delete existing destination if overwrite
-        if overwrite:
-            try:
-                self.rm(new_path, recursive=True)
-            except onedrive.exceptions.FileNotFoundError:
-                pass
+        # overwriting behavior
+        if not overwrite:
+            if self.exists(dst):
+                raise onedrive.exceptions.FileExistsError(path=dst)
         else:
-            # if copying and not overwrite, check if destination exists,
-            # since the API won't immediately respond with HTTP 409
-            # Conflict, but rather, return rather return an HTTP 500
-            # Internal Server Error when one later queries the async job
-            # status.
-            if action == "copy":
-                if self.exists(new_path):
-                    raise onedrive.exceptions.FileExistsError(path=new_path)
+            try:
+                dst_metadata = self.metadata(dst)
+
+                # get source and dest types
+                src_type = "file" if "file" in src_metadata else "directory"
+                dst_type = "file" if "file" in dst_metadata else "directory"
+
+                # decide action based on source and dest types
+                if src_type != dst_type:
+                    msg = ("cannot overwrite %s '%s' with %s '%s'" %
+                           (dst_type, dst, src_type, src))
+                    raise onedrive.exceptions.PermissionError(msg)
+                elif dst_type == "file":
+                    # both are files, remove dest
+                    self.rm(dst)
+                else:
+                    # both are directories, try to remove dest (only works if it's empty)
+                    try:
+                        self.rmdir(dst)
+                    except onedrive.exceptions.PermissionError:
+                        raise
+
+            except onedrive.exceptions.FileNotFoundError:
+                # dest not there yet, which is good
+                pass
+
+        new_parent = os.path.dirname(dst)
+        new_name = os.path.basename(dst)
+
+        # confirm new parent is an existing directory
+        self.assert_dir(new_parent)
 
         # make request
-        encoded_path = urllib.parse.quote(path)
+        encoded_path = urllib.parse.quote(src)
         encoded_new_parent = urllib.parse.quote(new_parent)
         method = "patch" if action == "move" else "post"
         endpoint = ("drive/root:/%s" % encoded_path if action == "move" else
@@ -915,7 +945,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 self.monitor_copy(monitor_url,
                                   monitor_interval=monitor_interval,
                                   show_progress=show_progress,
-                                  src=path, dst=new_path)
+                                  src=src, dst=dst)
             else:
                 return monitor_url
 
@@ -927,12 +957,13 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             # of source, so what is not found must be the new parent.
             raise onedrive.exceptions.FileNotFoundError(path=new_parent)
         elif status_code == 409:
-            # conflict
-            raise onedrive.exceptions.FileExistsError(path=new_path)
+            # conflict, shouldn't really happen as we already tested
+            # prior to request, but anyway
+            raise onedrive.exceptions.FileExistsError(path=dst)
         else:
             raise onedrive.exceptions.APIRequestError(
                 response=response,
-                request_desc="%s request for '%s'" % (action, path))
+                request_desc="%s request for '%s' to '%s'" % (action, src, dst))
 
     def monitor_copy(self, monitor_url, monitor_interval=1,
                      show_progress=False, src=None, dst=None):

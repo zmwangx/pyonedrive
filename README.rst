@@ -87,6 +87,9 @@ Notes
   ``client_secret`` are present in the config file before running
   ``onedrive-auth``.
 
+* The package is being developed, so API is subject to change; CLI should be
+  relatively stable.
+
 Best practices
 --------------
 
