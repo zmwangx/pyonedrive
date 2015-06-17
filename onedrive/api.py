@@ -3,12 +3,14 @@
 """OneDrive API client."""
 
 # TODO: customizable conflict behavior
+# pylint: disable=too-many-lines
 
 import os
 import logging
 import time
 import urllib.parse
 
+import arrow
 import requests
 
 from zmwangx.colorout import cprogress
@@ -24,6 +26,8 @@ import onedrive.util
 
 class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
     """OneDrive API client."""
+
+    # pylint: disable=too-many-public-methods
 
     def __init__(self):
         """Init."""
@@ -728,7 +732,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise onedrive.exceptions.FileNotFoundError(path=path)
         else:
             raise onedrive.exceptions.APIRequestError(
-                response=makedirs_response,
+                response=delete_response,
                 request_desc="deletion request for '%s'" % path)
 
     def remove(self, path):
@@ -984,9 +988,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                     ptext.finish("unknown error occurred")
                 raise onedrive.exceptions.APIRequestError(
                     response=status_response,
-                    request_desc="copying status request for '%s' to '%s'" % (action, src, dst))
+                    request_desc="copy status request for '%s' to '%s'" % (src, dst))
             time.sleep(monitor_interval)
-        pass
 
     def move(self, *args, **kwargs):
         """
