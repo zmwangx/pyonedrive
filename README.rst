@@ -126,6 +126,10 @@ Known issues
   might randomly fail on large files, e.g., those greater than 1GB). The API is
   labeled as preview though (2015-06-15), so hopefully it will get better.
 
+* Extended attributes and especially **resource forks** are not supported,
+  because (1) I don't know how to upload them; (2) OneDrive doesn't support
+  them anyway.
+
 Plans
 -----
 
