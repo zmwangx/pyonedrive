@@ -287,19 +287,140 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 response=metadata_response,
                 request_desc="metadata request for '%s'" % path)
 
-    def exists(self, path):
-        """Check if file or directory exists in OneDrive.
+    def assert_exists(self, path):
+        """Assert that ``path`` exists on OneDrive.
 
-        Returns
-        -------
-        exists : bool
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If requested item is not found.
 
         """
         try:
             self.metadata(path)
+            return
+        except onedrive.exceptions.FileNotFoundError:
+            raise
+
+    def assert_file(self, path):
+        """Assert that ``path`` is an existing file on OneDrive.
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If requested item is not found.
+        onedrive.exceptions.IsADirectoryError
+            If requested item exists but is a directory.
+
+        """
+        try:
+            metadata = self.metadata(path)
+            if "file" not in metadata:
+                raise onedrive.exceptions.IsADirectoryError(path=path)
+        except onedrive.exceptions.FileNotFoundError:
+            raise
+
+    def assert_dir(self, path):
+        """Assert that ``path`` is an existing directory on OneDrive.
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If requested item is not found.
+        onedrive.exceptions.NotADirectoryError
+            If requested item exists but is a file.
+
+        """
+        try:
+            metadata = self.metadata(path)
+            if "folder" not in metadata:
+                raise onedrive.exceptions.NotADirectoryError(path=path)
+        except onedrive.exceptions.FileNotFoundError:
+            raise
+
+    def exists(self, path):
+        """Check if file or directory exists on OneDrive.
+
+        Returns
+        -------
+        bool
+
+        """
+        try:
+            self.assert_exists(path)
             return True
         except onedrive.exceptions.FileNotFoundError:
             return False
+
+    def isfile(self, path):
+        """Check if path is an existing file on OneDrive.
+
+        Returns
+        -------
+        bool
+
+        """
+        try:
+            self.assert_file(path)
+            return True
+        except (onedrive.exceptions.FileNotFoundError, onedrive.exceptions.IsADirectoryError):
+            return False
+
+    def isdir(self, path):
+        """Check if path is an existing directory on OneDrive.
+
+        Returns
+        -------
+        bool
+
+        """
+        try:
+            self.assert_dir(path)
+            return True
+        except (onedrive.exceptions.FileNotFoundError, onedrive.exceptions.NotADirectoryError):
+            return False
+
+    def getsize(self, path):
+        """Get the size, in bytes, of path.
+
+        This differs from ``os.path.getsize`` in that the total size of
+        a directory is returned.
+
+        Returns
+        -------
+        size : int
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If the requested item is not found.
+
+        """
+        try:
+            metadata = self.metadata(path)
+            return metadata["size"]
+        except onedrive.exceptions.FileNotFoundError:
+            raise
+
+    def getmtime(self, path):
+        """Get the time of last modification of path.
+
+        Returns
+        -------
+        posix_time : int
+            The number of seconds since the epoch.
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If the requested item is not found.
+
+        """
+        try:
+            metadata = self.metadata(path)
+            return arrow.get(metadata["lastModifiedDateTime"]).timestamp
+        except onedrive.exceptions.FileNotFoundError:
+            raise
 
     def geturl(self, path):
         """Get URL for a file or directory.
@@ -314,8 +435,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             If requested item is not found.
 
         """
-        metadata = self.metadata(path)
-        return metadata["webUrl"]
+        try:
+            metadata = self.metadata(path)
+            return metadata["webUrl"]
+        except onedrive.exceptions.FileNotFoundError:
+            raise
 
     def children(self, path):
         """List children of a directory.
@@ -386,11 +510,35 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         children, metadata
 
         """
-        metadata = self.metadata(path)
-        if "file" in metadata:
-            return ("file", [metadata])
-        else:
-            return ("directory", self.children(path))
+        try:
+            metadata = self.metadata(path)
+            if "file" in metadata:
+                return ("file", [metadata])
+            else:
+                return ("directory", self.children(path))
+        except onedrive.exceptions.FileNotFoundError:
+            raise
+
+    def listdir(self, path):
+        """List the names of children of a directory.
+
+        Returns
+        -------
+        list
+            A list containing the names of the entries in the directory
+            given by ``path``.
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError:
+            If the requested item is not found.
+        onedrive.exceptions.NotADirectoryError:
+            If the requested item is not a directory.
+
+        """
+        self.assert_dir(path)
+        children = self.children(path)
+        return [child["name"] for child in children]
 
     def download(self, path, compare_hash=True, show_progress_bar=False):
         """Download a file from OneDrive.
@@ -417,9 +565,13 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             If the download appears corrupted (size or SHA-1 mismatch)
 
         """
-        metadata = self.metadata(path)
-        if "folder" in metadata:
-            raise onedrive.exceptions.IsADirectoryError(path=path)
+        try:
+            metadata = self.metadata(path)
+            if "folder" in metadata:
+                raise onedrive.exceptions.IsADirectoryError(path=path)
+        except onedrive.exceptions.FileNotFoundError:
+            raise
+
         local_path = metadata["name"]
         if os.path.exists(local_path):
             raise FileExistsError("'%s' already exists locally" % local_path)
@@ -473,8 +625,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             Metadata object of the created (or existing) directory, as
             returned by a standard metadata request.
 
-        Exceptions
-        ----------
+        Raises
+        ------
         onedrive.exceptions.FileExistsError
             If path already exists and is a directory (with ``exist_ok``
             set to ``False``).
@@ -525,8 +677,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             Metadata object of the created directory, as returned by a
             standard metadata request.
 
-        Exceptions
-        ----------
+        Raises
+        ------
         onedrive.exceptions.FileNotFoundError
             If the parent does not exist.
         onedrive.exceptions.FileExistsError
@@ -539,32 +691,23 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         makedirs
 
         """
-        dirname = os.path.dirname(path)
-        try:
-            parent_metadata = self.metadata(dirname)
-        except onedrive.exceptions.FileNotFoundError:
-            raise
-
-        if "file" in parent_metadata:
-            msg = ("parent '%s' (located at '%s') is not a directory" %
-                   (dirname, parent_metadata["webUrl"]))
-            raise onedrive.exceptions.NotADirectoryError(msg=msg, path=path)
-
+        parent = os.path.dirname(path)
+        self.assert_dir(parent)
         return self.makedirs(path, exist_ok=False)
 
-    def rm(self, path, recursive=True):
+    def rm(self, path, recursive=False):
         """Remove an item.
 
         Parameters
         ----------
         recursive : bool
-            If ``False``, raise
+            If ``True``, remove a directory and its children
+            recursively; otherwise, raise
             ``onedrive.exceptions.IsADirectoryError`` when the item
-            requested is a directory. Default is ``True``, i.e., remove
-            a directory and its children recursively.
+            requested is a directory. Default is ``False``.
 
-        Exceptions
-        ----------
+        Raises
+        ------
         onedrive.exceptions.FileNotFoundError
             If the item does not exist in the first place.
         onedrive.exceptions.IsADirectoryError
@@ -575,9 +718,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         encoded_path = urllib.parse.quote(path)
 
         if not recursive:
-            metadata = self.metadata(path)
-            if "folder" in metadata:
-                raise onedrive.exceptions.IsADirectoryError(path=path)
+            self.assert_file(path)
 
         delete_response = self.delete("drive/root:/%s" % encoded_path)
         status_code = delete_response.status_code
@@ -590,11 +731,32 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 response=makedirs_response,
                 request_desc="deletion request for '%s'" % path)
 
+    def remove(self, path):
+        """Alias for ``self.rm(path)``."""
+        self.rm(path)
+
+    def rmtree(self, path):
+        """Remove directory tree.
+
+        Basically an alias for ``self.rm(path, recursive=True)``, with
+        the additional check that ``path`` is an existing directory.
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If the item does not exist in the first place.
+        onedrive.exceptions.NotADirectoryError
+            If the item exists but is not a directory.
+
+        """
+        self.assert_dir(path)
+        self.rm(path, recursive=True)
+
     def rmdir(self, path):
         """Remove an empty directory.
 
-        Exceptions
-        ----------
+        Raises
+        ------
         onedrive.exceptions.FileNotFoundError
             If the item does not exist in the first place.
         onedrive.exceptions.NotADirectoryError
@@ -617,6 +779,30 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise onedrive.exceptions.PermissionError(msg=msg, path=path)
 
         self.rm(path, recursive=True)
+
+    def removedirs(self, path):
+        """Remove directories recursively.
+
+        Works like ``rmdir`` except that, if the leaf directory is
+        successfully removed, ``removedirs`` tries to successively
+        remove every parent directory mentioned in path until an error
+        is raised (which is ignored, because it generally means that a
+        parent directory is not empty).
+
+        Raises
+        ------
+        See ``rmdir``. Only exceptions on the leaf directory are raised.
+
+        """
+        self.rmdir(path)
+        while True:
+            path = os.path.dirname(path)
+            if not path:
+                break
+            try:
+                self.rmdir(path)
+            except onedrive.exceptions.PermissionError:
+                break
 
     def move_or_copy(self, action, path, new_parent=None, new_name=None, overwrite=False,
                      block=True, monitor_interval=1, show_progress=False):
@@ -683,8 +869,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise onedrive.exceptions.FileExistsError(msg=msg, path=path)
 
         # check source item existence
-        if not self.exists(path):
-            raise onedrive.exceptions.FileNotFoundError(path=path)
+        self.assert_exists(path)
 
         # delete existing destination if overwrite
         if overwrite:
@@ -805,12 +990,70 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
     def move(self, *args, **kwargs):
         """
-        Same as ``self.move_or_copy("move", *args, **kwargs)``.
+        Alias for ``self.move_or_copy("move", *args, **kwargs)``.
+
+        Basic usage: ``move(path, new_parent, new_name)``.
+
         """
         return self.move_or_copy("move", *args, **kwargs)
 
     def copy(self, *args, **kwargs):
         """
-        Same as ``self.move_or_copy("copy", *args, **kwargs)``.
+        Alias for ``self.move_or_copy("copy", *args, **kwargs)``.
+
+        Basic usage: ``copy(path, new_parent, new_name)``.
+
         """
         return self.move_or_copy("copy", *args, **kwargs)
+
+    def rename(self, src, dst):
+        """
+        Rename the file or directory ``src`` to ``dst``.
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If ``src`` or the parent directory of ``dst`` does not
+            exist.
+        onedrive.exceptions.FileExistsError
+            If ``dst`` already exists.
+
+        """
+        self.move(src, os.path.dirname(dst), os.path.basename(dst))
+
+    def renames(self, src, dst):
+        """Recursive directory or file renaming function.
+
+        Works like ``rename``, except creation of any intermediate
+        directories needed to make the new pathname good is attempted
+        first. After the rename, directories corresponding to rightmost
+        path segments of the old name will be pruned away using
+        ``removedirs``.
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If ``src`` does not exist.
+        onedrive.exceptions.FileExistsError
+            If ``dst`` already exists.
+        onedrive.exceptions.NotADirectoryError
+            If one of the intermediate paths of ``dst`` already exists
+            and is not a directory.
+
+        """
+        self.assert_exists(src)
+
+        # try to make intermediate directories required
+        try:
+            self.makedirs(os.path.dirname(dst), exist_ok=True)
+        except onedrive.exceptions.NotADirectoryError:
+            raise
+
+        # try to rename
+        try:
+            self.rename(src, dst)
+        except onedrive.exceptions.FileExistsError:
+            raise
+
+        # pruned old path with removedirs
+        self.removedirs(os.path.dirname(src))
