@@ -272,10 +272,6 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         onedrive.exceptions.FileNotFoundError
             If requested item is not found.
 
-        See Also
-        --------
-        list
-
         """
         encoded_path = urllib.parse.quote(path)
         logging.info("requesting '%s'", encoded_path)
@@ -1012,12 +1008,13 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                     status = status_response.json()
                     text = "%s: %s" % (status["status"], status["statusDescription"])
                     ptext.finish(text)
-                raise onedrive.exceptions.CopyError(src=src, dst=dst, response=status_response)
+                raise onedrive.exceptions.CopyError(
+                    msg=text, src=src, dst=dst, response=status_response)
             else:
                 if show_progress:
                     ptext.finish("unknown error occurred")
-                raise onedrive.exceptions.APIRequestError(
-                    response=status_response,
+                raise onedrive.exceptions.CopyError(
+                    src=src, dst=dst, response=status_response,
                     request_desc="copy status request for '%s' to '%s'" % (src, dst))
             time.sleep(monitor_interval)
 

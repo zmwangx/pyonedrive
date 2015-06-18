@@ -27,7 +27,9 @@ class GeneralOneDriveException(Exception):
 
     def __str__(self):
         """The printable string is ``self.msg``."""
-        if isinstance(self.msg, str):
+        if self.msg is None:
+            return ""
+        elif isinstance(self.msg, str):
             return self.msg
         else:
             return repr(self.msg)
@@ -192,6 +194,8 @@ class PermissionError(GeneralAPIException):
 class APIRequestError(GeneralAPIException):
     """An errored API request.
 
+    This exception is raised when one gets a response that one cannot handle.
+
     Parameters
     ----------
     msg : str, optional
@@ -200,6 +204,10 @@ class APIRequestError(GeneralAPIException):
         An optional description of the request which might be used in
         the message (if ``msg`` is not specified), e.g., ``"metadata
         request on 'vid'"``.
+    long_format : bool, optional
+        Use long error message, i.e., including request method and URL (if
+        ``response`` object is given and contains the ``request``
+        attribute). Default is ``False``.
 
     Attributes
     ----------
@@ -209,24 +217,27 @@ class APIRequestError(GeneralAPIException):
 
     """
 
-    def __init__(self, msg=None, response=None, request_desc=None):
+    def __init__(self, msg=None, response=None, request_desc=None, long_format=False):
         """Init."""
         # pylint: disable=super-init-not-called
+        self.msg = msg
         self.response = response
         self.request_desc = request_desc
-        if msg is not None:
-            self.msg = msg
-        else:
+        if self.msg is None:
             request_desc = request_desc if request_desc is not None else "API request"
-            if response is None or not hasattr(response, "request"):
-                request_long_desc = request_desc
+            if response is None:
+                # can't say much
+                self.msg = "%s failed; don't know what to do" % request_desc
             else:
-                request = response.request
-                request_method = request.method
-                request_url = onedrive.util.pop_query_from_url(request.url, "access_token")
-                request_long_desc = "%s (%s %s )" % (request_desc, request_method, request_url)
-            self.msg = ("got HTTP %d upon %s: %s; don't know what to do" %
-                        (response.status_code, request_long_desc, response.text))
+                if long_format:
+                    # generate long description
+                    if hasattr(response, "request"):
+                        request = response.request
+                        request_method = request.method
+                        request_url = onedrive.util.pop_query_from_url(request.url, "access_token")
+                        request_desc = "%s [ %s %s ]" % (request_desc, request_method, request_url)
+                self.msg = ("got HTTP %d upon %s: %s; don't know what to do" %
+                            (response.status_code, request_desc, response.text))
 
 class UploadError(APIRequestError):
     """A special type of ``APIRequestError`` for error during uploads.
@@ -248,16 +259,20 @@ class UploadError(APIRequestError):
 
     """
 
-    def __init__(self, msg=None, path=None, response=None, saved_session=None):
+    def __init__(self, msg=None, path=None, response=None, request_desc=None, saved_session=None):
         """Init."""
-        # pylint: disable=super-init-not-called
-        self.msg = msg
+        super().__init__(msg=msg, response=response, request_desc=request_desc)
         self.path = path
-        self.response = response
         self.saved_session = saved_session
-        if msg is None:
-            path_desc = "'%s'" % path if path is not None else "unspecified file"
-            self.msg = "error occured when trying to upload %s; %s" % (path_desc, self.msg)
+
+        path_desc = "'%s'" % path if path is not None else "unspecified file"
+        upload_error_general_desc = "error occured when trying to upload '%s'" % path_desc
+
+        if self.msg is None:
+            self.msg = upload_error_general_desc
+        else:
+            self.msg = "%s: %s" % (upload_error_general_desc, self.msg)
+
         if saved_session:
             self.msg += "; session saved to '%s'" % saved_session.session_path
 
@@ -281,19 +296,20 @@ class CopyError(APIRequestError):
 
     """
 
-    def __init__(self, msg=None, src=None, dst=None, response=None):
+    def __init__(self, msg=None, src=None, dst=None, response=None, request_desc=None):
         """Init."""
-        # pylint: disable=super-init-not-called
-        self.msg = msg
+        super().__init__(msg=msg, response=response, request_desc=request_desc)
         self.src = src
         self.dst = dst
-        self.response = response
-        if msg is None:
-            src_desc = "unspecified item" if src is None else "'%s'" % src
-            dst_desc = "unspecified item" if dst is None else "'%s'" % dst
-            self.msg = "failed to copy '%s' to '%s'" % (src_desc, dst_desc)
-            if response is not None:
-                self.msg += ": %s" % response.text
+
+        src_desc = "unspecified item" if src is None else "'%s'" % src
+        dst_desc = "unspecified item" if dst is None else "'%s'" % dst
+        copy_error_general_desc = "failed to copy '%s' to '%s'" % (src_desc, dst_desc)
+
+        if self.msg is None:
+            self.msg = copy_error_general_desc
+        else:
+            self.msg = "%s: %s" % (copy_error_general_desc, self.msg)
 
 class CorruptedDownloadError(GeneralOneDriveException):
     """Exception for a corrupted download."""

@@ -85,7 +85,7 @@ def cli_upload():
     jobs = min(args.jobs, num_files) if args.jobs > 0 else num_files
     timeout = args.base_segment_timeout + jobs
     with multiprocessing.Pool(processes=jobs, maxtasksperchild=1) as pool:
-        show_progress_bar = (num_files == 1) and zmwangx.pbar.autopbar()
+        show_progress_bar = (jobs == 1) and zmwangx.pbar.autopbar()
         uploader = Uploader(client, directory,
                             timeout=timeout,
                             stream=args.streaming_upload,
