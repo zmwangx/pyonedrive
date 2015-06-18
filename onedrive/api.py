@@ -1090,3 +1090,79 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         # pruned old path with removedirs
         self.removedirs(os.path.dirname(src))
+
+    def walk(self, top, topdown=True, paths_only=False):
+        """Walk a directory tree.
+
+        Retrieve metadata of items (or names only, if you prefer) in a
+        directory tree by walking the tree either top-down or bottom-up.  See
+        https://docs.python.org/3/library/os.html#os.walk for more detailed
+        explanation and usage examples (in fact, part of the doc you see here
+        is directly copied from there).
+
+        Parameters
+        ----------
+        top : str
+            The path to the root directory.
+        topdown : bool, optional
+            If ``True``, the triple for a directory is generated before the
+            triples for any of its subdirectories (directories are generated
+            top-down). If ``False``, the triple for a directory is generated
+            after the triples for all of its subdirectories (directories are
+            generated bottom-up). No matter the value of ``topdown``, the list
+            of subdirectories is retrieved before the tuples for the directory
+            and its subdirectories are generated. Default is ``True``.
+
+            When ``topdown`` is ``True``, the caller can modify the dirs or
+            dirnames list in-place, and ``walk`` will only recurse into the
+            subdirectories that remain; this can be used to prune the search,
+            impose a specific order of visiting, or even to inform ``walk``
+            about directories the caller creates or renames before it resumes
+            ``walk`` again. Modifying the list when ``topdown`` is ``False`` is
+            ineffective, because in bottom-up mode the directories in dirnames
+            are generated before dirpath itself is generated.
+        paths_only : bool, optional
+            Whether to yield lists with names only (as opposed to lists of full
+            metadata objects). See the "Yields" section. Default is ``False``.
+
+        Yields
+        ------
+        (dirpath, dirs, files) or (dirpath, dirnames, filenames)
+            For each directory in the tree rooted at directory ``top``
+            (including ``top`` itself), a three-tuple is yielded. Whether full
+            metadata objects or names only are yielded depends on the
+            ``paths_only`` option.
+
+        Returns
+        -------
+        onedrive.exceptions.FileNotFoundError
+            If ``top`` is not found.
+        onedrive.exceptions.IsADirectoryError
+            If ``top`` exists but is a directory.
+
+        """
+        self.assert_dir(top)
+
+        dirs = []
+        files = []
+        children = self.children(top)
+        for item in children:
+            if "folder" in item:
+                dirs.append(item)
+                if not topdown:
+                    yield from self.walk(os.path.join(top, item["name"]), topdown, paths_only)
+            else:
+                files.append(item)
+
+        # yield at the current level
+        if paths_only:
+            dirnames = [item["name"] for item in dirs]
+            filenames = [item["name"] for item in files]
+            yield top, dirnames, filenames
+        else:
+            yield top, dirs, files
+
+        # if topdown, recurse into subdirectories
+        if topdown:
+            for item in dirs:
+                yield from self.walk(os.path.join(top, item["name"]), topdown, paths_only)
