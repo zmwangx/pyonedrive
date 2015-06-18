@@ -13,7 +13,7 @@ Features
 * Batch upload;
 * Batch download;
 * Create directories;
-* List directory contents;
+* List directory (or recursively, directory tree) contents;
 * Move or copy files and directories;
 * Remove files and directories;
 * Get item URL for viewing in web interface (among other metadata);

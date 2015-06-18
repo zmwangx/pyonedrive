@@ -8,6 +8,7 @@ import argparse
 import json
 import multiprocessing
 import os
+import sys
 
 from zmwangx.colorout import cerror, cfatal_error, cprogress
 import zmwangx.humansize
@@ -118,6 +119,58 @@ def cli_geturl():
                (path, type(err).__name__, str(err)))
         return 1
 
+LS_LONG_HUMAN_FORMAT_STRING = "{type:<2s}{childcount:>6s}{size:>8s}    {indent}{name}"
+LS_LONG_FORMAT_STRING = "{type:<2s}{childcount:>6s}{size:>16s}    {indent}{name}"
+LS_SHORT_FORMAT_STRING = "{indent}{name}"
+
+def cli_ls_print_item(item, level=0, long=True, human=True):
+    """Print an entry for ls.
+
+    Parameters
+    ----------
+    level : int, optional
+        Indentation level for the item. (Each level leads to an indentation of
+        four spaces when printing the name of the item.) Default is ``0``.
+    long : bool, optional
+        Whether to print in long format. See the description in ``cli_ls`` for
+        the details of the long format. Default is ``True``.
+    human : bool, optional
+        Under long format, whether to print size of an item in human readable
+        format. Default is ``True``.
+
+    """
+    indent = " " * level * 4
+
+    if not long:
+        print(LS_SHORT_FORMAT_STRING.format(name=item["name"], indent=indent))
+    else:
+        # long format: extract or calculate various stats
+        itemtype = "d" if "folder" in item else "-"
+        try:
+            childcount_s = str(item["folder"]["childCount"])
+        except KeyError:
+            childcount_s = "-"
+        size = item["size"]
+        if human:
+            size_s = zmwangx.humansize.humansize(size, prefix="iec", unit="")
+        else:
+            size_s = str(size)
+        name = item["name"]
+        stats = {
+            "type": itemtype,
+            "childcount": childcount_s,
+            "size": size_s,
+            "indent": indent,
+            "name": name,
+        }
+
+        if human:
+            print(LS_LONG_HUMAN_FORMAT_STRING.format(**stats))
+        else:
+            print(LS_LONG_FORMAT_STRING.format(**stats))
+
+    sys.stdout.flush()
+
 def cli_ls():
     """List items CLI."""
     description = """Mimic ls on OneDrive items. By default the long
@@ -134,48 +187,46 @@ def cli_ls():
                         help="turn off human readable format")
     parser.add_argument("+l", "++long", action="store_false",
                         help="turn off long format")
+    parser.add_argument("-d", "--directory", action="store_true",
+                        help="""list directories themselves, not their
+                        contents; when used in conjuction with the --tree
+                        option, omit files in a directory tree""")
+    parser.add_argument("-t", "--tree", action="store_true",
+                        help="display full directory trees")
     args = parser.parse_args()
 
     onedrive.log.logging_setup()
     client = onedrive.api.OneDriveAPIClient()
 
+    path = args.path
+    human = args.human
+    long = args.long
     try:
-        itemtype, items = client.list(args.path)
-    except onedrive.exceptions.GeneralAPIException as err:
-        cerror("%s: %s" % (type(err).__name__, str(err)))
-        return 1
-
-    if not args.long:
-        for item in items:
-            print(item["name"])
-        return 0
-
-    # collect stat for each item
-    item_stats_list = []
-    for item in items:
-        itemtype = "d" if "folder" in item else "-"
-        try:
-            childcount_s = str(item["folder"]["childCount"])
-        except KeyError:
-            childcount_s = "-"
-        size = item["size"]
-        if args.human:
-            size_s = zmwangx.humansize.humansize(size, prefix="iec", unit="")
+        metadata = client.metadata(path)
+        if "file" in metadata:
+            cli_ls_print_item(metadata, long=long, human=human)
         else:
-            size_s = str(size)
-        name = item["name"]
-        item_stats_list.append((itemtype, childcount_s, size_s, name))
-    # calculate max width of each field (except the last field: name)
-    widths = [0, 0, 0]
-    for item_stats in item_stats_list:
-        for field_index in range(3):
-            if len(item_stats[field_index]) > widths[field_index]:
-                widths[field_index] = len(item_stats[field_index])
-    # print
-    format_string = "%{widths[0]}s %{widths[1]}s %{widths[2]}s %s".format(widths=widths)
-    for item_stats in item_stats_list:
-        print(format_string % item_stats)
-    return 0
+            if not args.tree:
+                if args.directory:
+                    cli_ls_print_item(metadata, long=long, human=human)
+                else:
+                    items = client.children(path)
+                    for item in items:
+                        cli_ls_print_item(item, long=long, human=human)
+            else:
+                # directory tree, where interesting things happen
+                for level, root, dirs, files in client.walkn(top=path, check_dir=False):
+                    cli_ls_print_item(root, level, long=long, human=human)
+                    if not args.directory:
+                        for item in files:
+                            cli_ls_print_item(item, level + 1, long=long, human=human)
+    except onedrive.exceptions.FileNotFoundError:
+        cerror("'%s' not found on OneDrive" % path)
+        return 1
+    except Exception as err:
+        cerror("failed to list '%s': %s: %s" %
+               (path, type(err).__name__, str(err)))
+        return 1
 
 class Downloader(object):
     """Downloader that downloads files from OneDrive."""

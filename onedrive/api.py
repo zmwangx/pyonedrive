@@ -1091,7 +1091,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         # pruned old path with removedirs
         self.removedirs(os.path.dirname(src))
 
-    def walk(self, top, topdown=True, paths_only=False):
+    def walk(self, top, topdown=True, paths_only=False, **kwargs):
         """Walk a directory tree.
 
         Retrieve metadata of items (or names only, if you prefer) in a
@@ -1122,15 +1122,30 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             ineffective, because in bottom-up mode the directories in dirnames
             are generated before dirpath itself is generated.
         paths_only : bool, optional
-            Whether to yield lists with names only (as opposed to lists of full
-            metadata objects). See the "Yields" section. Default is ``False``.
+            Whether to yield only the directory path and lists with only item
+            names (as opposed to full metadata objects). See the "Yields"
+            section. Default is ``False``.
+
+        Other Parameters
+        ----------------
+        check_dir : bool, optional
+            Whether to perform a check to confirm ``top`` is an existing
+            directory. If set to ``False``, ``walk`` will just assume ``top``
+            is an existing directory, will may lead to surprises if you haven't
+            confirmed it beforehand. Default is ``True``. This parameter is
+            mostly used internally (to reduce recursion overhead).
+        metadata : dict, optional
+            The metadata object of ``top``, if it is already known; default is
+            ``None``. This parameter is used to avoid one extra metadata query
+            when ``paths_only`` is ``False``. It becomes significant when used
+            in a recursive setting.
 
         Yields
         ------
-        (dirpath, dirs, files) or (dirpath, dirnames, filenames)
+        (dirmetadata, dirs, files) or (dirpath, dirnames, filenames)
             For each directory in the tree rooted at directory ``top``
             (including ``top`` itself), a three-tuple is yielded. Whether full
-            metadata objects or names only are yielded depends on the
+            metadata objects or only path/names are yielded depends on the
             ``paths_only`` option.
 
         Returns
@@ -1141,7 +1156,29 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             If ``top`` exists but is a directory.
 
         """
-        self.assert_dir(top)
+        for tup in self.walkn(top, topdown=topdown, paths_only=paths_only, **kwargs):
+            yield tup[1:]
+
+    def walkn(self, top, level=0, topdown=True, paths_only=False, **kwargs):
+        """Walk, armored with level info.
+
+        See ``walk``. This method works exactly the same as ``walk`` except
+        that the level of the subdirectory is prepended to each yielded
+        tuple. By default ``top`` has level 0, but this can be customized via
+        the ``level`` option.
+
+        """
+        check_dir = kwargs.pop("check_dir", True)
+        top_metadata = kwargs.pop("metadata", None)
+
+        if check_dir:
+            try:
+                if top_metadata is None:
+                    top_metadata = self.metadata(top)
+                if "folder" not in top_metadata:
+                    raise onedrive.exceptions.NotADirectoryError(path=top)
+            except onedrive.exceptions.FileNotFoundError:
+                raise
 
         dirs = []
         files = []
@@ -1150,7 +1187,9 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             if "folder" in item:
                 dirs.append(item)
                 if not topdown:
-                    yield from self.walk(os.path.join(top, item["name"]), topdown, paths_only)
+                    yield from self.walkn(os.path.join(top, item["name"]), level + 1,
+                                          topdown=topdown, paths_only=paths_only,
+                                          check_dir=False, metadata=item)
             else:
                 files.append(item)
 
@@ -1158,11 +1197,15 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         if paths_only:
             dirnames = [item["name"] for item in dirs]
             filenames = [item["name"] for item in files]
-            yield top, dirnames, filenames
+            yield level, top, dirnames, filenames
         else:
-            yield top, dirs, files
+            if top_metadata is None:
+                top_metadata = self.metadata(top)
+            yield level, top_metadata, dirs, files
 
         # if topdown, recurse into subdirectories
         if topdown:
             for item in dirs:
-                yield from self.walk(os.path.join(top, item["name"]), topdown, paths_only)
+                yield from self.walkn(os.path.join(top, item["name"]), level + 1,
+                                      topdown=topdown, paths_only=paths_only,
+                                      check_dir=False, metadata=item)
