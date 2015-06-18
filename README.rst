@@ -4,17 +4,8 @@
 
 *Caution: This package is Python 3.3+ only.*
 
-`pyonedrive` is a OneDrive command line client using the new API. The code
-quality isn't great, so don't hold your breath. [#]_ For a more complete
-OneDrive solution in Python, see `mk-fg/python-onedrive
-<https://github.com/mk-fg/python-onedrive>`_. Unfortunately,
-``python-onedrive`` does not support — and the maintainer has no plan to
-support — the new OneDrive API (see `#52
-<https://github.com/mk-fg/python-onedrive/issues/52>`_).
-
-.. [#] Yes, I cooked up convenient patches for all sorts of error scenarios
-       along the way, resulting in horrible code. I will be able to do it
-       cleaner if I ever get to rewrite this.
+`pyonedrive` is a OneDrive command line client using `OneDrive API v1.0
+<https://dev.onedrive.com/README.htm>`_.
 
 Features
 --------
@@ -23,29 +14,28 @@ Features
 * Batch download;
 * Create directories;
 * List directory contents;
+* Move or copy files and directories;
 * Remove files and directories;
-* Get item URL for viewing in web interface (among other metadata).
+* Get item URL for viewing in web interface (among other metadata);
+* A public API exposing all features listed above, and some familiar filesystem
+  operations similar to those exposed by STL ``os`` and ``os.path``.
 
 The following console scripts are bundled with this package:
 
 * ``onedrive-auth``;
+* ``onedrive-cp``;
 * ``onedrive-geturl``;
 * ``onedrive-ls``;
 * ``onedrive-metadata``;
 * ``onedrive-mkdir``;
+* ``onedrive-mv``;
 * ``onedrive-rm``;
 * ``onedrive-rmdir``;
 * ``onedrive-upload``.
 
-``onedrive-upload``, according to my testing, is more reliable than the CLI
-shipped with ``python-onedrive``, as I have implemented retries and
-safeguards. It is also more likely to win out in the long run since
-``python-onedrive`` uses a `semi-private BITS API
-<https://gist.github.com/rgregg/37ba8929768a62131e85>`_ that is subject to
-change. Howeever, speed is not great when few uploads are running concurrently
-(this is also the case for ``python-onedrive``); better use the Web interface
-in that case when it's not too much hessle (use ``onedrive-geturl`` to get a
-direct link to a remote directory).
+The names of the scripts are pretty much self-explanatory. To use any of these,
+you will need to first register an application and authorize the client. See
+the "Notes" section below.
 
 Installation
 ------------
@@ -70,8 +60,10 @@ Notes
   section).  Use a virtualenv if you don't want to pollute your global
   environment.
 
-* One needs to save the credentials to ``~/.config/onedrive/conf.ini``. The
-  config file should be in the following format::
+* One needs to `register an application
+  <https://dev.onedrive.com/app-registration.htm>`_ and save the credentials to
+  ``~/.config/onedrive/conf.ini``. The config file should be in the following
+  format::
 
     [oauth]
     client_id = XXXXXXXXXXXXXXXX
@@ -87,30 +79,37 @@ Notes
   ``client_secret`` are present in the config file before running
   ``onedrive-auth``.
 
-* The package is being developed, so API is subject to change; CLI should be
-  relatively stable.
+* This package is yet to reach stable (or even beta), so the API is subject to
+  compatibility-breaking changes. I won't break it without a good reason,
+  though.
+
+  CLI, on the other hand, should be mostly backward-compatible. There could be
+  additions, and subtle behaviors in edge cases might be tweaked.
 
 Best practices
 --------------
 
 * For whatever reason, the OneDrive resumable upload API responds slow or drops
-  connection altogether quite often. Therefore, I have set a default timeout of
-  15 seconds for each 10 MB chunk (add one second for each concurrent job). One
-  may need to tweak the ``timeout`` parameter based on network condition to get
-  best results.
+  connection altogether fairly often. Therefore, I have set a default base
+  timeout of 15 seconds for each 10 MB chunk (add one second for each
+  concurrent job). One may need to tweak the ``timeout`` parameter based on
+  network condition to get best results. For CLI use, see the
+  ``--base-segment-timeout`` option of ``onedrive-upload``.
 
-* There are two modes of upload: streaming (each chunk) or not. The streaming
-  mode uses less memory but is much more likely to hang (not forever since we
-  have timeouts set in place) and generally slower.
+* There are two modes of upload: streaming (which doesn't load full chunks into
+  memory) or not. The streaming mode uses less memory but is much more likely
+  to hang (not forever since we have timeouts set in place) and generally
+  slower, for whatever reason.
 
   From my limited testing, a streaming worker uses ~15MB of memory, while a
   non-streaming one uses ~30MB at first and may grow to ~45MB for large files
   (maybe I have some hidden memory unreleased?). A streaming worker can be up
   to 30% slower (with timeouts accounted).
 
-  Therefore, one should use nonstreaming workers (default) when there are only
-  a few jobs, and streaming workers (specifying the ``-s, --streaming-upload``
-  option) if there are a great number of concurrent jobs.
+  Therefore, one should use nonstreaming workers (default) when the worker
+  count is relatively low (what counts as low depends on your expectation of
+  memory usage), and streaming workers (with the ``-s, --streaming-upload``
+  option) only if there are a great number of concurrent jobs.
 
 Known issues
 ------------
@@ -136,11 +135,13 @@ Known issues
 Plans
 -----
 
-There are a couple of TODOs in the source code, waiting to be addressed.
+A list of enhancement plans are `here
+<https://github.com/zmwangx/pyonedrive/labels/enhancement>`_ in the issue
+tracker.
 
-Apart from that, I might implement addition features in the future, most likely
-when I personally need something (and there might be a rewrite, as I mentioned
-above).
+Apart from that, I might implement additional features in the future, most
+likely when I personally need something. Feel free to suggest features and
+enhancements in the issue tracker though (or better yet, submit pull requests).
 
 ..
    Local Variables:

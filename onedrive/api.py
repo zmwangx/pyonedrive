@@ -2,7 +2,6 @@
 
 """OneDrive API client."""
 
-# TODO: customizable conflict behavior
 # pylint: disable=too-many-lines
 
 import os

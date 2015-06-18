@@ -37,11 +37,13 @@ setuptools.setup(
     entry_points={
         'console_scripts': [
             'onedrive-auth=onedrive.auth:main',
+            'onedrive-cp=onedrive.cli:cli_cp',
             'onedrive-download=onedrive.cli:cli_download',
             'onedrive-geturl=onedrive.cli:cli_geturl',
             'onedrive-metadata=onedrive.cli:cli_metadata',
             'onedrive-mkdir=onedrive.cli:cli_mkdir',
             'onedrive-ls=onedrive.cli:cli_ls',
+            'onedrive-mv=onedrive.cli:cli_mv',
             'onedrive-rm=onedrive.cli:cli_rm',
             'onedrive-rmdir=onedrive.cli:cli_rmdir',
             'onedrive-upload=onedrive.cli:cli_upload',

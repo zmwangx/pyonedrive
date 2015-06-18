@@ -7,6 +7,7 @@
 import argparse
 import json
 import multiprocessing
+import os
 
 from zmwangx.colorout import cerror, cfatal_error, cprogress
 import zmwangx.humansize
@@ -298,6 +299,184 @@ def cli_rmdir():
                    (path, type(err).__name__, str(err)))
             returncode = 1
     return returncode
+
+class CopyWorker(multiprocessing.Process):
+    """A worker for copying an item on OneDrive.
+
+    Parameters
+    ----------
+    client : onedrive.api.OneDriveAPIClient
+    src, dst : str
+        Source and destination of the copy operation. Passed to
+        ``onedrive.api.OneDriveAPIClient.copy``.
+    recursive : bool, optional
+        Whether to allow recursive copying of a directory. Default is
+        ``False``.
+    overwrite, show_progress : bool, optional
+        Passed to ``onedrive.api.OneDriveAPIClient.copy``. Defaults are
+        ``False``.
+
+    Attributes
+    ----------
+    src, dst : str
+
+    """
+
+    def __init__(self, client, src, dst, recursive=False, overwrite=False, show_progress=False):
+        """Init."""
+        super().__init__()
+        self._client = client
+        self.src = src
+        self.dst = dst
+        self._recursive = recursive
+        self._overwrite = overwrite
+        self._show_progress = show_progress
+
+    def run(self):
+        """Run the copy operation and monitor status.
+
+        The exit code is either 0 or 1, indicating success or failure.
+
+        """
+        try:
+            if not self._recursive:
+                self._client.assert_file(self.src)
+            self._client.copy(self.src, self.dst,
+                              overwrite=self._overwrite, show_progress=self._show_progress)
+            cprogress("finished copying '%s' to '%s'" % (self.src, self.dst))
+            return 0
+        except KeyboardInterrupt:
+            cerror("copying '%s' to '%s' interrupted" % (self.src, self.dst))
+            return 1
+        except Exception as err:
+            # catch any exception in a multiprocessing environment
+            cerror("failed to copy '%s' to '%s': %s: %s" %
+                   (self.src, self.dst, type(err).__name__, str(err)))
+            return 1
+
+def cli_mv_or_cp(util, util_name=None):
+    """Mimic the behavior of coreutils ``mv`` or ``cp``.
+
+    Parameters
+    ----------
+    util : {"mv", "cp"}
+    util_name : str, optional
+        Utility name shown in usage and help text. If omitted, will be
+        set to the value of ``util``.
+
+    """
+    usage = """
+    {util_name} [options] [-T] SOURCE DEST
+    {util_name} [options] SOURCE... DIRECTORY
+    {util_name} [options] -t DIRECTORY SOURCE...""".format(util_name=util_name)
+    parser = argparse.ArgumentParser(usage=usage)
+    parser.add_argument("paths", nargs="+",
+                        help="sources, destination or directory, depending on invocation")
+
+    parser.add_argument("-t", "--target-directory", action="store_true",
+                        help="copy all SOURCE arguments into DIRECTORY")
+    parser.add_argument("-T", "--no-target-directory", action="store_true",
+                        help="treat DEST as exact destination, not directory")
+    parser.add_argument("-f", "--force", action="store_true",
+                        help="overwrite existing destinations")
+    if util == "cp":
+        parser.add_argument("-R", "-r", "--recursive", action="store_true",
+                            help="copy directories recursively")
+    args = parser.parse_args()
+
+    onedrive.log.logging_setup()
+    client = None  # defer setup
+
+    # list of (src, dst) pairs, where dst is the full destination
+    src_dst_list = []
+
+    if args.target_directory and args.no_target_directory:
+        cfatal_error("conflicting options -t and -T; see %s -h" % util_name)
+        return 1
+    if len(args.paths) < 2:
+        cfatal_error("at least two paths required; see %s -h" % util_name)
+        return 1
+    elif len(args.paths) == 2:
+        # single source item
+        if args.target_directory:
+            # mv/cp -t DIRECTORY SOURCE
+            directory, source = args.paths
+            dest = os.path.join(directory, os.path.basename(source))
+        elif args.no_target_directory:
+            # mv/cp -T SOURCE DEST
+            source, dest = args.paths
+        else:
+            # no -t or -T flag
+            # automatically decide based on whether dest is an existing directory
+            client = onedrive.api.OneDriveAPIClient()
+            if client.isdir(args.paths[1]):
+                # mv/cp SOURCE DIRECTORY
+                source, directory = args.paths
+                dest = os.path.join(directory, os.path.basename(source))
+            else:
+                # mv/cp SOURCE DEST
+                source, dest = args.paths
+        src_dst_list.append((source, dest))
+    else:
+        # multiple source items
+        if args.no_target_directory:
+            cerror("option -T cannot be specified when there are multiple source items")
+            return 1
+        elif args.target_directory:
+            # mv/cp -t DIRECTORY SOURCE...
+            sources = args.paths[1:]
+            directory = args.paths[0]
+        else:
+            # mv/cp SOURCE... DIRECTORY
+            sources = args.paths[:-1]
+            directory = args.paths[-1]
+
+        src_dst_list = [(source, os.path.join(directory, os.path.basename(source)))
+                        for source in sources]
+
+    if client is None:
+        client = onedrive.api.OneDriveAPIClient()
+
+    # 3, 2, 1, action!
+    returncode = 0
+    if util == "mv":
+        # move each item synchronously
+        for src_dst_pair in src_dst_list:
+            src, dst = src_dst_pair
+            try:
+                client.move(src, dst, overwrite=args.force)
+                cprogress("moved '%s' to '%s'" % (src, dst))
+            except Exception as err:
+                cerror("failed to move '%s' to '%s': %s: %s" %
+                       (src, dst, type(err).__name__, str(err)))
+                returncode = 1
+    else:
+        # cp is more involved
+        num_items = len(src_dst_list)
+        show_progress = (num_items == 1) and zmwangx.pbar.autopbar()
+        workers = [CopyWorker(client, src, dst, recursive=args.recursive, overwrite=args.force,
+                              show_progress=show_progress)
+                   for src, dst in src_dst_list]
+        try:
+            for worker in workers:
+                worker.start()
+            for worker in workers:
+                worker.join()
+                if worker.exitcode != 0:
+                    returncode = 1
+        except KeyboardInterrupt:
+            returncode = 1
+
+    return returncode
+
+def cli_mv():
+    """Alias for cli_mv_or_cp("mv", "onedrive-mv")."""
+    return cli_mv_or_cp("mv", "onedrive-mv")
+
+def cli_cp():
+    """Alias for cli_mv_or_cp("cp", "onedrive-cp")."""
+    return cli_mv_or_cp("cp", "onedrive-cp")
+
 def cli_metadata():
     """Display metadata CLI."""
     parser = argparse.ArgumentParser(description="Dump JSON metadata of item.")
