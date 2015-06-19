@@ -8,6 +8,7 @@ import argparse
 import json
 import multiprocessing
 import os
+import posixpath
 import sys
 
 from zmwangx.colorout import cerror, cfatal_error, cprogress
@@ -482,7 +483,7 @@ def cli_mv_or_cp(util, util_name=None):
         if args.target_directory:
             # mv/cp -t DIRECTORY SOURCE
             directory, source = args.paths
-            dest = os.path.join(directory, os.path.basename(source))
+            dest = posixpath.join(directory, posixpath.basename(source))
         elif args.no_target_directory:
             # mv/cp -T SOURCE DEST
             source, dest = args.paths
@@ -493,7 +494,7 @@ def cli_mv_or_cp(util, util_name=None):
             if client.isdir(args.paths[1]):
                 # mv/cp SOURCE DIRECTORY
                 source, directory = args.paths
-                dest = os.path.join(directory, os.path.basename(source))
+                dest = posixpath.join(directory, posixpath.basename(source))
             else:
                 # mv/cp SOURCE DEST
                 source, dest = args.paths
@@ -512,7 +513,7 @@ def cli_mv_or_cp(util, util_name=None):
             sources = args.paths[:-1]
             directory = args.paths[-1]
 
-        src_dst_list = [(source, os.path.join(directory, os.path.basename(source)))
+        src_dst_list = [(source, posixpath.join(directory, posixpath.basename(source)))
                         for source in sources]
 
     if client is None:

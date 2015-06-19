@@ -6,6 +6,7 @@
 
 import os
 import logging
+import posixpath
 import time
 import urllib.parse
 
@@ -138,7 +139,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         elif not os.path.isfile(local_path):
             raise IsADirectoryError("'%s' is a directory" % local_path)
 
-        path = os.path.join(directory, os.path.basename(local_path))
+        filename = os.path.basename(local_path)
+        path = posixpath.join(directory, filename)
 
         # check remote file existence
         if check_remote:
@@ -169,7 +171,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         # calculate local file hash
         if compare_hash:
             if show_progress:
-                cprogress("hashing progress:")
+                cprogress("%s: hashing progress:" % filename)
             local_sha1sum = zmwangx.hash.file_hash(
                 local_path, "sha1", show_progress=show_progress).lower()
             logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
@@ -184,7 +186,6 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         if session:
             if show_progress:
-                filename = os.path.basename(local_path)
                 cprogress("%s: loaded unfinished session from disk" % filename)
                 cprogress("%s: retrieving upload session" % filename)
             upload_url = session.upload_url
@@ -198,7 +199,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         if show_progress:
             if compare_hash:
                 # print "upload progress:" to distinguish from hashing progress
-                cprogress("upload progress:")
+                cprogress("%s: upload progress:" % filename)
             pbar = zmwangx.pbar.ProgressBar(total, preprocessed=position)
 
         with open(os.path.realpath(local_path), "rb") as fileobj:
@@ -292,24 +293,26 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         compare_hash = kwargs.pop("compare_hash", True)
         show_progress = kwargs.pop("show_progress", False)
 
+        filename = os.path.basename(local_path)
+
         # calculate local file hash
         if compare_hash:
             if show_progress:
-                crprogress("'%s': hashing..." % local_path)
+                crprogress("%s: hashing..." % filename)
             local_sha1sum = zmwangx.hash.file_hash(local_path, "sha1").lower()
             logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
 
-        path = os.path.join(directory, os.path.basename(local_path))
+        path = posixpath.join(directory, filename)
         encoded_path = urllib.parse.quote(path)
 
         if show_progress:
-            crprogress("'%s': uploading..." % local_path)
+            crprogress("%s: uploading..." % filename)
         with open(local_path, "rb") as fileobj:
             put_response = self.put("drive/root:/%s:/content" % encoded_path,
                                     params={"@name.conflictBehavior": conflict_behavior},
                                     data=fileobj)
             if put_response.status_code in {200, 201}:
-                crprogress("'%s': upload complete" % local_path)
+                crprogress("%s: upload complete" % filename)
                 cerrnewline()
             else:
                 cerrnewline()
@@ -325,6 +328,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         Parameters
         ----------
         path : str
+            Remote path to upload to.
         conflict_behavior : {"fail", "replace", "rename"}, optional
         session : onedrive.save.SavedUploadSession, optional
 
@@ -346,7 +350,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         session_response = self.post("drive/root:/%s:/upload.createSession" % encoded_path,
                                      json={"@name.conflictBehavior": conflict_behavior})
         if session_response.status_code == 404:
-            raise onedrive.exceptions.FileNotFoundError(path=os.path.dirname(path),
+            raise onedrive.exceptions.FileNotFoundError(path=posixpath.dirname(path),
                                                         type="directory")
         elif session_response.status_code != 200:
             raise onedrive.exceptions.UploadError(
@@ -376,6 +380,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         Parameters
         ----------
         path : str
+            Remote path being uploaded to.
         upload_url : str
             The upload URL (without access code) as returned by the upload API.
         session : onedrive.save.SavedUploadSession
@@ -417,12 +422,17 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
     @staticmethod
     def _is_weird_upload_error(response):
-        """Check if a response got during upload is unhandleable.
+        """Check if a response got during resumable upload is unhandleable.
 
         There are some errors lacking a known or implemented solution,
         e.g., 401 Unauthorized when the request clearly carries the
         required token. When these errors occur, the only we could do is
         wait and try again, and if it still fails, raise.
+
+        Parameters
+        ----------
+        response : requests.Response
+            Response from a chunk upload request.
 
         Returns
         -------
@@ -495,6 +505,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
     def metadata(self, path):
         """Get metadata of a file or directory.
 
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
+
         Returns
         -------
         metadata : dict
@@ -523,6 +538,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
     def assert_exists(self, path):
         """Assert that ``path`` exists on OneDrive.
 
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
+
         Raises
         ------
         onedrive.exceptions.FileNotFoundError
@@ -537,6 +557,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
     def assert_file(self, path):
         """Assert that ``path`` is an existing file on OneDrive.
+
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
 
         Raises
         ------
@@ -556,6 +581,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
     def assert_dir(self, path):
         """Assert that ``path`` is an existing directory on OneDrive.
 
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
+
         Raises
         ------
         onedrive.exceptions.FileNotFoundError
@@ -574,6 +604,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
     def exists(self, path):
         """Check if file or directory exists on OneDrive.
 
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
+
         Returns
         -------
         bool
@@ -588,6 +623,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
     def isfile(self, path):
         """Check if path is an existing file on OneDrive.
 
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
+
         Returns
         -------
         bool
@@ -601,6 +641,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
     def isdir(self, path):
         """Check if path is an existing directory on OneDrive.
+
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
 
         Returns
         -------
@@ -618,6 +663,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         This differs from ``os.path.getsize`` in that the total size of
         a directory is returned.
+
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
 
         Returns
         -------
@@ -637,6 +687,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
     def getmtime(self, path):
         """Get the time of last modification of path.
+
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
 
         Returns
         -------
@@ -658,6 +713,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
     def geturl(self, path):
         """Get URL for a file or directory.
 
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
+
         Returns
         -------
         url : str
@@ -675,7 +735,15 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise
 
     def children(self, path):
-        """List children of a directory.
+        """List children of an item.
+
+        Note that no exception is raised when ``path`` points to a file;
+        the returned list is empty.
+
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
 
         Returns
         -------
@@ -699,10 +767,6 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         onedrive.exceptions.FileNotFoundError
             If the requested item is not found.
 
-        See Also
-        --------
-        list
-
         """
         encoded_path = urllib.parse.quote(path)
         logging.info("requesting children of '%s'", encoded_path)
@@ -719,6 +783,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
     def list(self, path):
         """List the file itself, or children of a directory.
+
+        Parameters
+        ----------
+        path : str
+            Path of remote item.
 
         Returns
         -------
@@ -754,6 +823,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
     def listdir(self, path):
         """List the names of children of a directory.
+
+        Parameters
+        ----------
+        path : str
+            Path of remote directory.
 
         Returns
         -------
@@ -847,6 +921,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         Parameters
         ----------
+        path : str
+            Path of remote directory to make.
         exist_ok : bool
             If ``False``, ``onedrive.exceptions.FileExistsError`` is
             raised when path already exists and is a directory. Default
@@ -872,8 +948,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         mkdir
 
         """
-        basename = os.path.basename(path)
-        dirname = os.path.dirname(path)
+        basename = posixpath.basename(path)
+        dirname = posixpath.dirname(path)
         encoded_dirname = urllib.parse.quote(dirname)
         makedirs_response = self.post(
             "drive/root:/%s:/children" % encoded_dirname,
@@ -904,6 +980,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
     def mkdir(self, path):
         """Create a directory (no recursive).
 
+        Parameters
+        ----------
+        path : str
+            Path of remote directory to make.
+
         Returns
         -------
         metadata : dict
@@ -924,7 +1005,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         makedirs
 
         """
-        parent = os.path.dirname(path)
+        parent = posixpath.dirname(path)
         self.assert_dir(parent)
         return self.makedirs(path, exist_ok=False)
 
@@ -933,6 +1014,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         Parameters
         ----------
+        path : str
+            Path of remote item to remove.
         recursive : bool
             If ``True``, remove a directory and its children
             recursively; otherwise, raise
@@ -974,6 +1057,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         Basically an alias for ``self.rm(path, recursive=True)``, with
         the additional check that ``path`` is an existing directory.
 
+        Parameters
+        ----------
+        path : str
+            Path of remote directory tree to remove.
+
         Raises
         ------
         onedrive.exceptions.FileNotFoundError
@@ -987,6 +1075,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
     def rmdir(self, path):
         """Remove an empty directory.
+
+        Parameters
+        ----------
+        path : str
+            Path of remote directory to remove.
 
         Raises
         ------
@@ -1022,6 +1115,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         is raised (which is ignored, because it generally means that a
         parent directory is not empty).
 
+        Parameters
+        ----------
+        path : str
+            Path of remote directory to remove.
+
         Raises
         ------
         See ``rmdir``. Only exceptions on the leaf directory are raised.
@@ -1029,7 +1127,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         """
         self.rmdir(path)
         while True:
-            path = os.path.dirname(path)
+            path = posixpath.dirname(path)
             if not path:
                 break
             try:
@@ -1102,7 +1200,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise ValueError("unknow action '%s'; should be 'move' or 'copy'" % action)
 
         # check source and dest are not the same item
-        if os.path.abspath(src) == os.path.abspath(dst):
+        if posixpath.abspath(src) == posixpath.abspath(dst):
             actioning = "moving" if action is "move" else "copying"
             msg = "'%s': %s to the same item" % (src, actioning)
             raise onedrive.exceptions.FileExistsError(msg=msg, path=src)
@@ -1144,8 +1242,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 # dest not there yet, which is good
                 pass
 
-        new_parent = os.path.dirname(dst)
-        new_name = os.path.basename(dst)
+        new_parent = posixpath.dirname(dst)
+        new_name = posixpath.basename(dst)
 
         # confirm new parent is an existing directory
         self.assert_dir(new_parent)
@@ -1274,6 +1372,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         """
         Rename the file or directory ``src`` to ``dst``.
 
+        Parameters
+        ----------
+        src, dst : str
+            Remote paths of source and destination.
+
         Raises
         ------
         onedrive.exceptions.FileNotFoundError
@@ -1283,7 +1386,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             If ``dst`` already exists.
 
         """
-        self.move(src, os.path.dirname(dst), os.path.basename(dst))
+        self.move(src, posixpath.dirname(dst), posixpath.basename(dst))
 
     def renames(self, src, dst):
         """Recursive directory or file renaming function.
@@ -1293,6 +1396,11 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         first. After the rename, directories corresponding to rightmost
         path segments of the old name will be pruned away using
         ``removedirs``.
+
+        Parameters
+        ----------
+        src, dst : str
+            Remote paths of source and destination.
 
         Raises
         ------
@@ -1309,7 +1417,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         # try to make intermediate directories required
         try:
-            self.makedirs(os.path.dirname(dst), exist_ok=True)
+            self.makedirs(posixpath.dirname(dst), exist_ok=True)
         except onedrive.exceptions.NotADirectoryError:
             raise
 
@@ -1320,7 +1428,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise
 
         # pruned old path with removedirs
-        self.removedirs(os.path.dirname(src))
+        self.removedirs(posixpath.dirname(src))
 
     def walk(self, top, topdown=True, paths_only=False, **kwargs):
         """Walk a directory tree.
@@ -1418,7 +1526,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             if "folder" in item:
                 dirs.append(item)
                 if not topdown:
-                    yield from self.walkn(os.path.join(top, item["name"]), level + 1,
+                    yield from self.walkn(posixpath.join(top, item["name"]), level + 1,
                                           topdown=topdown, paths_only=paths_only,
                                           check_dir=False, metadata=item)
             else:
@@ -1437,6 +1545,6 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         # if topdown, recurse into subdirectories
         if topdown:
             for item in dirs:
-                yield from self.walkn(os.path.join(top, item["name"]), level + 1,
+                yield from self.walkn(posixpath.join(top, item["name"]), level + 1,
                                       topdown=topdown, paths_only=paths_only,
                                       check_dir=False, metadata=item)
