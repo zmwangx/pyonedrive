@@ -6,12 +6,12 @@ A saved session is ``~/.local/share/onedrive/saved_sessions/ID.json``, where
 ``ID`` is a unique SHA-1 hexdigest computed from the remote path and the
 SHA-1 digest of the file. It looks like::
 
-{
-    "remote_path": "...",
-    "sha1sum": "...",
-    "upload_url": "https://api.onedrive.com/up/...",
-    "expires": 1433128563
-}
+    {
+        "remote_path": "...",
+        "sha1sum": "...",
+        "upload_url": "https://api.onedrive.com/up/...",
+        "expires": 1433128563
+    }
 
 where ``"expires"`` is a POSIX timestamp.
 

@@ -8,10 +8,14 @@ here = os.path.dirname(os.path.realpath(__file__))
 with open(os.path.join(here, 'README.rst')) as readme:
     long_description = readme.read()
 
+# read version from version.py and save in __version__
+with open(os.path.join(here, 'onedrive', 'version.py')) as f:
+    exec(f.read())
+
 setuptools.setup(
     name='onedrive',
-    version='0.1dev',
-    description='bare bones OneDrive uploader',
+    version=__version__,
+    description='OneDrive API/CLI client',
     long_description=long_description,
     url='https://github.com/zmwangx/pyonedrive',
     author='Zhiming Wang',

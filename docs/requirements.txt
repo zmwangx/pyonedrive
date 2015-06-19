@@ -1,0 +1,4 @@
+Sphinx==1.2.2
+arrow
+requests
+git+git://github.com/zmwangx/pyzmwangx.git@master

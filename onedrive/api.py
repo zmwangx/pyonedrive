@@ -1163,7 +1163,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         See Also
         --------
-        monitor_copy, move, copy, mv, cp
+        monitor_copy, move, copy
 
         """
         if action not in {"move", "copy"}:
@@ -1457,8 +1457,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             metadata objects or only path/names are yielded depends on the
             ``paths_only`` option.
 
-        Returns
-        -------
+        Raises
+        ------
         onedrive.exceptions.FileNotFoundError
             If ``top`` is not found.
         onedrive.exceptions.IsADirectoryError

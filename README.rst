@@ -4,8 +4,10 @@
 
 *Caution: This package is Python 3.3+ only.*
 
-``pyonedrive`` is a OneDrive command line client using `OneDrive API v1.0
-<https://dev.onedrive.com/README.htm>`_.
+``pyonedrive`` is a OneDrive command line client (and at the same time, an API
+client) using `OneDrive API v1.0 <https://dev.onedrive.com/README.htm>`_.
+
+API docs for developers is hosted on Read the Docs: http://pyonedrive.rtfd.org.
 
 Features
 --------
