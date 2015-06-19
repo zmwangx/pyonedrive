@@ -12,7 +12,7 @@ import urllib.parse
 import arrow
 import requests
 
-from zmwangx.colorout import cprogress
+from zmwangx.colorout import cprogress, crprogress, cerrnewline
 import zmwangx.hash
 import zmwangx.pbar
 
@@ -32,10 +32,105 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         """Init."""
         super().__init__()
 
-    def upload(self, directory, local_path,
-               chunk_size=10485760, timeout=15,
-               stream=False, compare_hash=True, show_progress_bar=False):
-        """Upload file using the resumable upload API."""
+    def upload(self, directory, local_path, **kwargs):
+        """
+        Upload a single file.
+
+        If the file is smaller than ``simple_upload_threshold`` (default
+        is 100MiB), then it is uploaded via the simple upload API
+        (https://dev.onedrive.com/items/upload_put.htm). Otherwise, it
+        is uploaded via the resumable upload API
+        (https://dev.onedrive.com/items/upload_large_files.htm).
+
+        Note that some of the options in "Other Parameters" beblow
+        (passed via ``**kwargs``) only apply to resumable upload.
+
+        Parameters
+        ----------
+        directory : str
+            Remote directory to upload to.
+        local_path : str
+            Path to the local file to be uploaded.
+
+        Other Parameters
+        ----------------
+        conflict_behavior : {"fail", "replace", "rename"}, optional
+            Default is ``"fail"``.
+        simple_upload_threshold : int, optional
+            Largest file size, in bytes, for using the simple upload
+            API; if the file size exeeds the threshold, then the
+            resumable upload API is used instead. Default is 10485760
+            (10 MiB). This value should not exceed 104857600 (100 MiB).
+        compare_hash : bool, optional
+            Whether to compare the SHA-1 digest of the local file and
+            the uploaded file. Default is ``True``. Note that ``True``
+            is required for resuming upload across CLI sessions (the
+            idea is: without checksumming, the file might be modified or
+            even replaced, so resuming upload is a very bad idea).
+        check_remote : bool, optional
+            Whether to check the existence of the remote item before
+            initiating upload. The check can be avoided if the remote
+            item is known to not exist (e.g., because the directory is
+            newly created), thus avoiding overhead. Default is ``True``.
+        chunk_size : str, optional
+            Size of each chunk when uploading the file. Default is
+            10485760 (10 MiB). Only applies to resumable upload.
+        timeout : int, optional
+            Timeout for uploading each chunk. Default is 15. Only
+            applies to resumable upload.
+        stream : bool, optional
+            Whether to stream each chunk. Default is ``False``. You
+            should only consider setting this to ``True`` when memory
+            usage is a serious concern. Only applies to resumable
+            upload (simple upload is always streamed).
+        show_progress : bool, optional
+            Whether to print progress information to stderr. Default is
+            ``False``. This option applies to both simple and resumable
+            upload, but for simple upload only a few messages will be
+            printed (as opposed to continuous update) for each file even
+            when ``show_progress`` is set to ``True``.
+
+        Raises
+        ------
+        FileNotFoundError
+            If local path does not exist.
+        IsADirectoryError
+            If local path exists but is a directory.
+        onedrive.exceptions.FileExistsError
+            If conflict behavior is set to ``"fail"``, and remote item
+            already exists.
+        onedrive.exceptions.IsADirectoryError
+            If conflict behavior is set to ``"replace"`` or
+            ``"rename"``, but the remote item is an existing directory
+            (hence cannot be replaced or renamed).
+        onedrive.exceptions.UploadError
+            Any error causing a failed upload.
+
+        """
+
+        conflict_behavior = kwargs.pop("conflict_behavior", "fail")
+        simple_upload_threshold = kwargs.pop("simple_upload_threshold", 10485760)
+        compare_hash = kwargs.pop("compare_hash", True)
+        check_remote = kwargs.pop("check_remote", True)
+        chunk_size = kwargs.pop("chunk_size", 10485760)
+        timeout = kwargs.pop("timeout", 15)
+        stream = kwargs.pop("stream", False)
+        show_progress = kwargs.pop("show_progress", False)
+
+        if conflict_behavior not in {"fail", "replace", "rename"}:
+            raise ValueError("recognized conflict behavior '%s'; "
+                             "should be fail, replace, or rename" % conflict_behavior)
+
+        # make sure threshold is in the range [0, 104857600], so that
+        # empty files are uploaded with the simple upload API (there are
+        # problems with uploading an empty file using the resumable API)
+        simple_upload_threshold = min(max(0, simple_upload_threshold), 104857600)
+
+        # make sure the chunk size is in the range (0, 60MiB), and is a
+        # multiple of 320KiB, as recommended in the API doc:
+        # https://dev.onedrive.com/items/upload_large_files.htm#best-practices
+        chunk_size = (((min(max(1, chunk_size), 1048576 * 60) - 1) // 327680) + 1) * 327680
+
 
         # check local file existence
         if not os.path.exists(local_path):
@@ -43,20 +138,40 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         elif not os.path.isfile(local_path):
             raise IsADirectoryError("'%s' is a directory" % local_path)
 
-        # check remote file existence
         path = os.path.join(directory, os.path.basename(local_path))
-        try:
-            url = self.geturl(path)
-            raise onedrive.exceptions.FileExistsError(path=path, url=url)
-        except onedrive.exceptions.FileNotFoundError:
-            pass
+
+        # check remote file existence
+        if check_remote:
+            try:
+                metadata = self.metadata(path)
+                if "folder" in metadata:
+                    # remote is an existing folder, fail no matter what
+                    if conflict_behavior == "fail":
+                        raise onedrive.exceptions.FileExistsError(
+                            path=path, type="directory", url=metadata["webUrl"])
+                    else:
+                        raise onedrive.exceptions.IsADirectoryError(path=path)
+                else:
+                    # remote is an existing file, only fail if conflict behavior is fail
+                    if conflict_behavior == "fail":
+                        raise onedrive.exceptions.FileExistsError(
+                            path=path, type="file", url=metadata["webUrl"])
+            except onedrive.exceptions.FileNotFoundError:
+                pass
+
+        size = os.path.getsize(local_path)
+        if size <= simple_upload_threshold:
+            return self._simple_upload(directory, local_path,
+                                       conflict_behavior=conflict_behavior,
+                                       compare_hash=compare_hash,
+                                       show_progress=show_progress)
 
         # calculate local file hash
         if compare_hash:
-            if show_progress_bar:
+            if show_progress:
                 cprogress("hashing progress:")
             local_sha1sum = zmwangx.hash.file_hash(
-                local_path, "sha1", show_progress_bar=show_progress_bar).lower()
+                local_path, "sha1", show_progress=show_progress).lower()
             logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
 
             # try to load a saved session, which is not available in no
@@ -68,19 +183,19 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             session = None
 
         if session:
-            if show_progress_bar:
+            if show_progress:
                 filename = os.path.basename(local_path)
                 cprogress("%s: loaded unfinished session from disk" % filename)
                 cprogress("%s: retrieving upload session" % filename)
             upload_url = session.upload_url
             position = self._get_upload_position(path, upload_url, session)
         else:
-            upload_url = self._initiate_upload_session(path, session)
+            upload_url = self._initiate_upload_session(path, conflict_behavior, session)
             position = 0
 
         # initiliaze progress bar for the upload
         total = os.path.getsize(os.path.realpath(local_path))
-        if show_progress_bar:
+        if show_progress:
             if compare_hash:
                 # print "upload progress:" to distinguish from hashing progress
                 cprogress("upload progress:")
@@ -105,15 +220,15 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 if response.status_code in {200, 201, 202}:
                     weird_error = False
                     position += size
-                    if show_progress_bar:
+                    if show_progress:
                         pbar.update(size)
                     continue
                 elif response.status_code == 404:
                     # start over
                     weird_error = False
-                    upload_url = self._initiate_upload_session(path)
+                    upload_url = self._initiate_upload_session(path, conflict_behavior, session)
                     position = 0
-                    if show_progress_bar:
+                    if show_progress:
                         pbar.force_update(position)
                     continue
                 elif self._is_weird_upload_error(response):
@@ -136,45 +251,100 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 else:
                     time.sleep(3)
                 position = self._get_upload_position(path, upload_url, session)
-                if show_progress_bar:
+                if show_progress:
                     pbar.force_update(position)
 
-            # finished uploading the entire file
-            if show_progress_bar:
-                pbar.finish()
-            assert response.status_code in {200, 201}  # 200 OK or 201 Created
+        # finished uploading the entire file
+        if show_progress:
+            pbar.finish()
 
-            if compare_hash:
-                try:
-                    remote_sha1sum = response.json()["file"]["hashes"]["sha1Hash"].lower()
-                    logging.info("SHA-1 digest of remote file '%s': %s", path, remote_sha1sum)
-                except KeyError:
-                    msg = "file created response has no key file.hashes.sha1Hash"
-                    raise onedrive.exceptions.UploadError(
-                        msg=msg, path=path, response=response, saved_session=session)
+        # already uploaded all available chunks, but the status code
+        # returned for the last chunk is not 200 OK or 201 Created
+        if response.status_code not in {200, 201}:
+            raise onedrive.exceptions.UploadError(
+                path=path, response=response, saved_session=session,
+                request_desc="chunk upload request")
 
-                if local_sha1sum != remote_sha1sum:
-                    msg = ("SHA-1 digest mismatch:\nlocal '%s': %s\nremote '%s': %s" %
-                           (local_path, local_sha1sum, path, remote_sha1sum))
-                    logging.error(msg)
-                    raise onedrive.exceptions.UploadError(
-                        msg=msg, path=path, response=response, saved_session=session)
+        # verify file hash
+        if compare_hash:
+            kwargs = {"local_path": local_path, "remote_path": path,
+                      "response": response, "saved_session": session}
+            self._upload_verify_hash(local_sha1sum, response.json(), **kwargs)
 
-            # success
-            if session:
-                session.discard()
+        # success
+        if session:
+            session.discard()
 
-    def _initiate_upload_session(self, path, session=None):
+    def _simple_upload(self, directory, local_path, **kwargs):
+        """
+        Upload single file using the simple upload API.
+
+        https://dev.onedrive.com/items/upload_put.htm.
+
+        See ``upload`` for documentation. Accepted keyword arguments:
+
+        * ``conflict_behavior``;
+        * ``compare_hash``;
+        * ``show_progress``.
+
+        """
+        conflict_behavior = kwargs.pop("conflict_behavior", "fail")
+        compare_hash = kwargs.pop("compare_hash", True)
+        show_progress = kwargs.pop("show_progress", False)
+
+        # calculate local file hash
+        if compare_hash:
+            if show_progress:
+                crprogress("'%s': hashing..." % local_path)
+            local_sha1sum = zmwangx.hash.file_hash(local_path, "sha1").lower()
+            logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
+
+        path = os.path.join(directory, os.path.basename(local_path))
+        encoded_path = urllib.parse.quote(path)
+
+        if show_progress:
+            crprogress("'%s': uploading..." % local_path)
+        with open(local_path, "rb") as fileobj:
+            put_response = self.put("drive/root:/%s:/content" % encoded_path,
+                                    params={"@name.conflictBehavior": conflict_behavior},
+                                    data=fileobj)
+            if put_response.status_code in {200, 201}:
+                crprogress("'%s': upload complete" % local_path)
+                cerrnewline()
+            else:
+                cerrnewline()
+                raise onedrive.exceptions.UploadError(
+                    path=path, response=put_response, request_desc="simple upload request")
+
+    def _initiate_upload_session(self, path, conflict_behavior="fail", session=None):
         """Initiate a resumable upload session and return the upload URL.
 
-        If the session parameter is given (a
-        onedrive.save.SavedUploadSession object), then the newly created
-        session is also saved to disk using the session.save call.
+        If ``session`` is given, then the newly created session is also
+        saved to disk using the session.save call.
+
+        Parameters
+        ----------
+        path : str
+        conflict_behavior : {"fail", "replace", "rename"}, optional
+        session : onedrive.save.SavedUploadSession, optional
+
+        Returns
+        -------
+        upload_url : str
+            The upload URL (with access_token stripped) returned by the
+            resumable upload API.
+
+        Raises
+        ------
+        onedrive.exceptions.FileNotFoundError
+            If the destination directory does not exist.
+        onedrive.exceptions.UploadError
+            Any error related to the resumable upload API.
 
         """
         encoded_path = urllib.parse.quote(path)
         session_response = self.post("drive/root:/%s:/upload.createSession" % encoded_path,
-                                     json={"@name.conflictBehavior": "fail"})
+                                     json={"@name.conflictBehavior": conflict_behavior})
         if session_response.status_code == 404:
             raise onedrive.exceptions.FileNotFoundError(path=os.path.dirname(path),
                                                         type="directory")
@@ -201,7 +371,20 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         return upload_url
 
     def _get_upload_position(self, path, upload_url, session=None):
-        """Get the postion to continue with the upload."""
+        """Get the postion to continue with the upload.
+
+        Parameters
+        ----------
+        path : str
+        upload_url : str
+            The upload URL (without access code) as returned by the upload API.
+        session : onedrive.save.SavedUploadSession
+
+        Returns
+        -------
+        onedrive.exceptions.UploadError
+
+        """
         try:
             status_response = self.get(upload_url, path=path)
         except requests.exceptions.RequestException as err:
@@ -241,6 +424,10 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         required token. When these errors occur, the only we could do is
         wait and try again, and if it still fails, raise.
 
+        Returns
+        -------
+        bool
+
         """
         # one known weird situation is fragmentRowCountCheckFailed (see
         # https://github.com/zmwangx/pyonedrive/issues/1)
@@ -257,6 +444,53 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             return False
 
         return True
+
+    @staticmethod
+    def _upload_verify_hash(local_sha1sum, remote_metadata, **kwargs):
+        """Verify file hash after a finished upload session.
+
+        Parameters
+        ----------
+        local_sha1sum : str
+            Lowercase hexadecimal SHA-1 digest of the local file.
+        remote_metadata : dict
+            Metadata object of the uploaded file, as returned by the API.
+
+        Other Parameters
+        ----------------
+        These parameters are passed through ``**kwargs``, and are for
+        error reporting only.
+
+        local_path : str, optional
+        remote_path : str, optional
+        response : requests.Response, optional
+        saved_session : onedrive.save.SavedUploadSession, optional
+
+        Raises
+        ------
+        onedrive.exceptions.UploadError
+            If SHA-1 digest is not available for the remote file, or if a SHA-1
+            mismatch is detected.
+
+        """
+        local_path = kwargs.pop("local_path", "unspecified")
+        remote_path = kwargs.pop("remote_path", "unspecified")
+        response = kwargs.pop("response", None)
+        saved_session = kwargs.pop("saved_session", None)
+        try:
+            remote_sha1sum = remote_metadata["file"]["hashes"]["sha1Hash"].lower()
+            logging.info("SHA-1 digest of remote file '%s': %s", remote_path, remote_sha1sum)
+        except KeyError:
+            msg = "file created response has no key file.hashes.sha1Hash"
+            raise onedrive.exceptions.UploadError(
+                msg=msg, path=remote_path, response=response, saved_session=saved_session)
+
+        if local_sha1sum != remote_sha1sum:
+            msg = ("SHA-1 digest mismatch:\nlocal '%s': %s\nremote '%s': %s" %
+                   (local_path, local_sha1sum, remote_path, remote_sha1sum))
+            logging.error(msg)
+            raise onedrive.exceptions.UploadError(
+                msg=msg, path=remote_path, response=response, saved_session=saved_session)
 
     def metadata(self, path):
         """Get metadata of a file or directory.
@@ -539,7 +773,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         children = self.children(path)
         return [child["name"] for child in children]
 
-    def download(self, path, compare_hash=True, show_progress_bar=False):
+    def download(self, path, compare_hash=True, show_progress=False):
         """Download a file from OneDrive.
 
         Parameters
@@ -549,7 +783,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         compare_hash : bool, optional
             Whether to compare local and remote file hashes. Default is
             ``True``.
-        show_progress_bar : bool, optional
+        show_progress : bool, optional
             Whether to display a progress bar. Default is ``False``.
 
         Raises
@@ -576,7 +810,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise FileExistsError("'%s' already exists locally" % local_path)
 
         size = metadata["size"]
-        if show_progress_bar:
+        if show_progress:
             if compare_hash:
                 cprogress("download progress:")
             pbar = zmwangx.pbar.ProgressBar(size)
@@ -588,9 +822,9 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             for chunk in download_request.iter_content(chunk_size=chunk_size):
                 if chunk:
                     fileobj.write(chunk)
-                if show_progress_bar:
+                if show_progress:
                     pbar.update(chunk_size)
-        if show_progress_bar:
+        if show_progress:
             pbar.finish()
 
         local_size = os.path.getsize(tmp_path)
@@ -599,10 +833,10 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 path=path, remote_size=size, local_size=local_size)
         if compare_hash:
             remote_sha1sum = metadata["file"]["hashes"]["sha1Hash"].lower()
-            if show_progress_bar:
+            if show_progress:
                 cprogress("hashing progress:")
             local_sha1sum = zmwangx.hash.file_hash(
-                tmp_path, "sha1", show_progress_bar=show_progress_bar).lower()
+                tmp_path, "sha1", show_progress=show_progress).lower()
             if remote_sha1sum != local_sha1sum:
                 raise onedrive.exceptions.CorruptedDownloadError(
                     path=path, remote_sha1sum=remote_sha1sum, local_sha1sum=local_sha1sum)

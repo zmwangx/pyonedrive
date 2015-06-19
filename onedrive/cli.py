@@ -19,27 +19,29 @@ import onedrive.exceptions
 import onedrive.log
 
 class Uploader(object):
-    """Uploader that uploads files to a given OneDrive directory."""
+    """Uploader that uploads files to a given OneDrive directory.
 
-    def __init__(self, client, directory,
-                 timeout=None,
-                 stream=False, compare_hash=True, show_progress_bar=False):
-        """Set client, directory, and parameters."""
+    Parameters
+    ----------
+    client : onedrive.api.OneDriveAPIClient
+    directory : str
+        Remote directory to upload to.
+    upload_kwargs : str
+        Keyword arguments directly passed to
+        ``onedrive.api.OneDriveAPIClient.upload``.
+
+    """
+
+    def __init__(self, client, directory, upload_kwargs):
+        """Init."""
         self._client = client
         self._directory = directory
-        self._timeout = timeout
-        self._stream = stream
-        self._compare_hash = compare_hash
-        self._show_progress_bar = show_progress_bar
+        self._upload_kwargs = upload_kwargs
 
     def __call__(self, local_path):
         """Upload a local file."""
         try:
-            self._client.upload(self._directory, local_path,
-                                timeout=self._timeout,
-                                stream=self._stream,
-                                compare_hash=self._compare_hash,
-                                show_progress_bar=self._show_progress_bar)
+            self._client.upload(self._directory, local_path, **self._upload_kwargs)
             cprogress("finished uploading '%s'" % local_path)
             return 0
         except KeyboardInterrupt:
@@ -56,41 +58,69 @@ def cli_upload():
     parser = argparse.ArgumentParser()
     parser.add_argument("directory", help="remote directory to upload to")
     parser.add_argument("local_paths", metavar="PATH", nargs="+",
-                        help="path of local file to upload")
-    parser.add_argument("--base-segment-timeout", type=float, default=15,
-                        help="""base timeout for uploading a single
-                        segment (10MiB) -- one second is added to this
-                        base timeout for every concurrent job; default is
-                        14""")
+                        help="path(s) of local file(s) to upload")
     parser.add_argument("-j", "--jobs", type=int, default=8,
-                        help="number of concurrect uploads, use 0 for unlimited; default is 8")
-    parser.add_argument("-s", "--streaming-upload", action="store_true")
+                        help="""number of concurrect uploads (i.e.,
+                        workers), use 0 for unlimited; default is 8""")
+    parser.add_argument("-f", "--force", action="store_true",
+                        help="overwrite if the remote file already exists")
+    parser.add_argument("-c", "--chunk-size", type=int, default=10485760,
+                        help="""Size in bytes of each chunk in resumable
+                        upload; default is 10 MiB, and the chunk size
+                        should not exceed 60 MiB""")
+    parser.add_argument("--base-segment-timeout", type=float, default=14,
+                        help="""base timeout for uploading a single
+                        segment (10MiB), with one second added to this
+                        base timeout for each worker; default is 14""")
+    parser.add_argument("--stream", action="store_true",
+                        help="""Use streaming workers (that stream each
+                        chunk) instead of regular workers; only use this
+                        if you are running a great number of workers
+                        concurrently, or if you are extremely concerned
+                        about memory usage""")
+    parser.add_argument("--simple-upload-threshold", type=int, default=10485760,
+                        help="""file size threshold (in bytes) for using
+                        chunked, resumable upload API instead of simple,
+                        one shot API (less overhead, good for uploading
+                        a great number of small files); default is 10
+                        MiB, and the threshold should not exceed 100
+                        MiB""")
     parser.add_argument("--no-check", action="store_true",
-                        help="do not compare checksum of local and remote files")
+                        help="""do not compare checksum of local and
+                        remote files (this prevents you from resuming an
+                        upload in case of a failure)""")
     args = parser.parse_args()
+
+    num_files = len(args.local_paths)
+    jobs = min(args.jobs, num_files) if args.jobs > 0 else num_files
+    show_progress = (jobs == 1) and zmwangx.pbar.autopbar()
+
+    upload_kwargs = {
+        "conflict_behavior": "replace" if args.force else "fail",
+        "simple_upload_threshold": args.simple_upload_threshold,
+        "compare_hash": not args.no_check,
+        "chunk_size": args.chunk_size,
+        "timeout": args.base_segment_timeout + jobs,
+        "stream": args.stream,
+        "show_progress": show_progress,
+    }
 
     onedrive.log.logging_setup()
     client = onedrive.api.OneDriveAPIClient()
 
+    # check existence of remote directory
     directory = args.directory
     try:
         directory_url = client.geturl(directory)
     except onedrive.exceptions.GeneralAPIException as err:
         cfatal_error(str(err))
         return 1
-    cprogress("preparing to upload to '%s'" % directory)
-    cprogress("directory URL: %s" % directory_url)
 
-    num_files = len(args.local_paths)
-    jobs = min(args.jobs, num_files) if args.jobs > 0 else num_files
-    timeout = args.base_segment_timeout + jobs
+    if show_progress:
+        cprogress("preparing to upload to '%s'" % directory)
+        cprogress("directory URL: %s" % directory_url)
     with multiprocessing.Pool(processes=jobs, maxtasksperchild=1) as pool:
-        show_progress_bar = (jobs == 1) and zmwangx.pbar.autopbar()
-        uploader = Uploader(client, directory,
-                            timeout=timeout,
-                            stream=args.streaming_upload,
-                            compare_hash=not args.no_check,
-                            show_progress_bar=show_progress_bar)
+        uploader = Uploader(client, directory, upload_kwargs)
         returncodes = []
         try:
             returncodes = pool.map(uploader, args.local_paths, chunksize=1)
@@ -215,7 +245,7 @@ def cli_ls():
                         cli_ls_print_item(item, long=long, human=human)
             else:
                 # directory tree, where interesting things happen
-                for level, root, dirs, files in client.walkn(top=path, check_dir=False):
+                for level, root, _, files in client.walkn(top=path, check_dir=False):
                     cli_ls_print_item(root, level, long=long, human=human)
                     if not args.directory:
                         for item in files:
@@ -231,17 +261,17 @@ def cli_ls():
 class Downloader(object):
     """Downloader that downloads files from OneDrive."""
 
-    def __init__(self, client, compare_hash=True, show_progress_bar=False):
+    def __init__(self, client, compare_hash=True, show_progress=False):
         """Set client and paramters."""
         self._client = client
         self._compare_hash = compare_hash
-        self._show_progress_bar = show_progress_bar
+        self._show_progress = show_progress
 
     def __call__(self, path):
         """Download a remote file."""
         try:
             self._client.download(path, compare_hash=self._compare_hash,
-                                  show_progress_bar=self._show_progress_bar)
+                                  show_progress=self._show_progress)
             cprogress("finished downloading '%s'" % path)
             return 0
         except KeyboardInterrupt:
@@ -270,9 +300,9 @@ def cli_download():
     num_files = len(args.paths)
     jobs = min(args.jobs, num_files) if args.jobs > 0 else num_files
     with multiprocessing.Pool(processes=jobs, maxtasksperchild=1) as pool:
-        show_progress_bar = (num_files == 1) and zmwangx.pbar.autopbar()
+        show_progress = (num_files == 1) and zmwangx.pbar.autopbar()
         downloader = Downloader(client, compare_hash=not args.no_check,
-                                show_progress_bar=show_progress_bar)
+                                show_progress=show_progress)
         returncodes = []
         try:
             returncodes = pool.map(downloader, args.paths, chunksize=1)
