@@ -781,59 +781,26 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 response=children_response,
                 request_desc="children request for '%s'" % path)
 
-    def list(self, path):
-        """List the file itself, or children of a directory.
+    def listdir(self, path, names_only=False):
+        """List children of a directory.
 
-        Parameters
-        ----------
-        path : str
-            Path of remote item.
-
-        Returns
-        -------
-        (type, items) : (str, list)
-            ``type`` is the type of the requested path, which is either
-            ``"file"`` or ``"directory"``.
-
-            For directories, ``items`` is a list of objects as returned
-            by the children API
-            (https://dev.onedrive.com/items/list.htm). For files,
-            ``items`` is a singleton with the metadata object as
-            returned by the metadata API
-            (https://dev.onedrive.com/items/get.htm).
-
-        Raises
-        ------
-        onedrive.exceptions.FileNotFoundError
-            If the requested item is not found.
-
-        See Also
-        --------
-        children, metadata
-
-        """
-        try:
-            metadata = self.metadata(path)
-            if "file" in metadata:
-                return ("file", [metadata])
-            else:
-                return ("directory", self.children(path))
-        except onedrive.exceptions.FileNotFoundError:
-            raise
-
-    def listdir(self, path):
-        """List the names of children of a directory.
+        Get ``os.listdir`` behavior (names of children) by setting
+        ``names_only`` to ``True``. Otherwise, a list of full metadata objects
+        is returned.
 
         Parameters
         ----------
         path : str
             Path of remote directory.
+        names_only : bool, optional
+            List names only. Default is ``False``.
 
         Returns
         -------
         list
-            A list containing the names of the entries in the directory
-            given by ``path``.
+            A list containing metadata objects of all children of the directory
+            given by ``path``. If ``names_only`` is set to ``True``, then the
+            list only contains the names of all children.
 
         Raises
         ------
@@ -845,7 +812,10 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         """
         self.assert_dir(path)
         children = self.children(path)
-        return [child["name"] for child in children]
+        if names_only:
+            return [child["name"] for child in children]
+        else:
+            return children
 
     def download(self, path, compare_hash=True, show_progress=False):
         """Download a file from OneDrive.

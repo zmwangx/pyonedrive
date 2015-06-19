@@ -10,6 +10,7 @@ import multiprocessing
 import os
 import posixpath
 import sys
+import textwrap
 
 from zmwangx.colorout import cerror, cfatal_error, cprogress
 import zmwangx.humansize
@@ -154,7 +155,7 @@ LS_LONG_HUMAN_FORMAT_STRING = "{type:<2s}{childcount:>6s}{size:>8s}    {indent}{
 LS_LONG_FORMAT_STRING = "{type:<2s}{childcount:>6s}{size:>16s}    {indent}{name}"
 LS_SHORT_FORMAT_STRING = "{indent}{name}"
 
-def cli_ls_print_item(item, level=0, long=True, human=True):
+def _cli_ls_print_entry(item, level=0, long=True, human=True):
     """Print an entry for ls.
 
     Parameters
@@ -202,62 +203,182 @@ def cli_ls_print_item(item, level=0, long=True, human=True):
 
     sys.stdout.flush()
 
+def _cli_ls_single_directory(client, directory, **kwargs):
+    """ls for a single directory (tree).
+
+    This function assumes ``directory`` is really a directory on
+    OneDrive. Breaking the premise may lead to undefined behavior.
+
+    Parameters
+    ----------
+    client : onedrive.api.OneDriveAPIClient
+    directory : str
+        Path to the remote directory (tree) to list.
+
+    Other Parameters
+    ----------------
+    metadata : list, optional
+        Metadata object of the directory. Saves one metadata request.
+    dironly : bool, optional
+        List directories only. For non-tree mode, list the directory
+        itself; for tree mode, omit files from the tree. Default is
+        ``False``.
+    tree : bool, optional
+        Tree mode. Default is ``False``.
+    human : bool, optional
+        Default is ``True``.
+    long : bool, optional
+        Default is ``True``.
+
+    """
+    metadata = kwargs.pop("metadata", None)
+    dironly = kwargs.pop("dironly", False)
+    tree = kwargs.pop("tree", False)
+    human = kwargs.pop("human", True)
+    long = kwargs.pop("long", True)
+
+    if metadata is None:
+        metadata = client.metadata(directory)
+
+    if not tree:
+        if dironly:
+            _cli_ls_print_entry(metadata, long=long, human=human)
+        else:
+            if long:
+                # print the directory total under long format
+                print("total %s" %
+                      zmwangx.humansize.humansize(metadata["size"], prefix="iec", unit=""))
+
+            children = client.children(directory)
+            for child in children:
+                _cli_ls_print_entry(child, long=long, human=human)
+    else:
+        # directory tree, where interesting things happen
+        for level, root, _, files in client.walkn(top=directory, check_dir=False):
+            _cli_ls_print_entry(root, level, long=long, human=human)
+            if not dironly:
+                for item in files:
+                    _cli_ls_print_entry(item, level + 1, long=long, human=human)
+
 def cli_ls():
     """List items CLI."""
-    description = """Mimic ls on OneDrive items. By default the long
-    format is used: type, child count, size, name. Type is a single
-    character, d or -. Note that this differs from ls -l in several
-    ways: mode is only a single character, distinguishing files and
-    directories; link count is replaced by child count, and for files
-    this is -; size is human readable by default (use +h/++human to turn
-    off); there are no owner, group, creation time and modification time
-    columns. Use +l/++long to turn off long format."""
-    parser = argparse.ArgumentParser(description=description, prefix_chars="-+")
-    parser.add_argument("path", help="remote directory")
-    parser.add_argument("+h", "++human", action="store_false",
-                        help="turn off human readable format")
-    parser.add_argument("+l", "++long", action="store_false",
-                        help="turn off long format")
+    description = """\
+    ls for OneDrive.
+
+    By default the long format is used, i.e., for each entry, the following
+    fields are printed:
+
+        type, childcount, size, indentation, name.
+
+    * type is a single character, `d' for a directory and `-' for a file;
+    * childcount is an integer for a directory and `-' for a file;
+    * size is the total size of the item (the size of a directory is calculated
+      recursively); this is by default a human-readable string, and can be
+      switched to plain byte count using the +h, ++human flag;
+    * indentation only appears in tree mode, where each level of depth is
+      translated into a four-space indent;
+    * name is the basename of the item (note this important difference from
+      POSIX ls, which would show full arguments under some circumstances; this
+      is considered a defect and might change in the future).
+
+    Long format can be turned off using the +l, ++long format, in which case
+    only indentations and names are printed.
+
+    Note that you can turn on **tree mode** using the -t, --tree flag, in which
+    case full directory trees are printed (on the fly).
+
+    There is also the -d flag for toggling directory only mode, similar to -d
+    of ls(1) or tree(1) (for tree mode).
+
+    Please do not rely on the output format of ls to be stable, and especially
+    do not parse it programatically, since there is no guarantee that it won't
+    change in the future. Please use the API instead (children, listdir, walk,
+    walkn, etc.; see the onedrive.api module).
+
+    """
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=textwrap.dedent(description),
+        prefix_chars="-+")
+    parser.add_argument("paths", metavar="PATH", nargs="+",
+                        help="remote path(s)")
     parser.add_argument("-d", "--directory", action="store_true",
                         help="""list directories themselves, not their
                         contents; when used in conjuction with the --tree
                         option, omit files in a directory tree""")
     parser.add_argument("-t", "--tree", action="store_true",
                         help="display full directory trees")
+    parser.add_argument("+h", "++human", action="store_false",
+                        help="turn off human readable format")
+    parser.add_argument("+l", "++long", action="store_false",
+                        help="turn off long format")
     args = parser.parse_args()
 
     onedrive.log.logging_setup()
     client = onedrive.api.OneDriveAPIClient()
 
-    path = args.path
+    paths = args.paths
+    dironly = args.directory
+    tree = args.tree
     human = args.human
     long = args.long
+
+    # wrap the whole thing into a try block, since ls might take a long
+    # time in tree mode, and the program could be interrupted
+    returncode = 0
     try:
-        metadata = client.metadata(path)
-        if "file" in metadata:
-            cli_ls_print_item(metadata, long=long, human=human)
-        else:
-            if not args.tree:
-                if args.directory:
-                    cli_ls_print_item(metadata, long=long, human=human)
+        # categorize paths into files and dirs; files will come first
+        # the files and dirs lists are lists of tuples (path, metadata)
+        files = []
+        dirs = []
+        for path in paths:
+            try:
+                metadata = client.metadata(path)
+                if "file" in metadata:
+                    files.append((path, metadata))
                 else:
-                    items = client.children(path)
-                    for item in items:
-                        cli_ls_print_item(item, long=long, human=human)
-            else:
-                # directory tree, where interesting things happen
-                for level, root, _, files in client.walkn(top=path, check_dir=False):
-                    cli_ls_print_item(root, level, long=long, human=human)
-                    if not args.directory:
-                        for item in files:
-                            cli_ls_print_item(item, level + 1, long=long, human=human)
-    except onedrive.exceptions.FileNotFoundError:
-        cerror("'%s' not found on OneDrive" % path)
-        return 1
-    except Exception as err:
-        cerror("failed to list '%s': %s: %s" %
-               (path, type(err).__name__, str(err)))
-        return 1
+                    dirs.append((path, metadata))
+            except onedrive.exceptions.FileNotFoundError:
+                cerror("'%s' not found on OneDrive" % path)
+                returncode = 1
+
+        # first list files, if any
+        for filepath, filemetadata in files:
+            _cli_ls_print_entry(filemetadata, long=long, human=human)
+
+        if not dirs:
+            return returncode
+
+        # list directories
+
+        # common kwargs
+        kwargs = {"dironly": dironly, "tree": tree, "human": human, "long": long}
+
+        # handle first directory specially due to special blank line annoyance
+        firstdirpath, firstdirmetadata = dirs[0]
+        if not dironly or tree:
+            if files:
+                print("")
+            print("%s:" % firstdirpath)
+        try:
+            _cli_ls_single_directory(client, firstdirpath, metadata=firstdirmetadata, **kwargs)
+        except Exception as err:
+            cerror("failed to list '%s': %s: %s" % (firstdirpath,  type(err).__name__, str(err)))
+
+        for dirpath, dirmetadata in dirs[1:]:
+            if not dironly or tree:
+                print("")
+                print("%s:" % dirpath)
+            try:
+                _cli_ls_single_directory(client, dirpath, metadata=dirmetadata, **kwargs)
+            except Exception as err:
+                cerror("failed to list '%s': %s: %s" % (dirpath,  type(err).__name__, str(err)))
+
+    except KeyboardInterrupt:
+        cerror("interrupted")
+        returncode = 1
+
+    return returncode
 
 class Downloader(object):
     """Downloader that downloads files from OneDrive."""
