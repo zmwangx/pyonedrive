@@ -36,7 +36,7 @@ setuptools.setup(
     install_requires=[
         'arrow',
         'requests',
-        'zmwangx>=0.1.39+g4019762',
+        'zmwangx>=0.1.40+gc4ea814',
     ],
     entry_points={
         'console_scripts': [
@@ -54,7 +54,7 @@ setuptools.setup(
         ]
     },
     dependency_links = [
-        'git+https://github.com/zmwangx/pyzmwangx.git@master#egg=zmwangx-0.1.39',
+        'git+https://github.com/zmwangx/pyzmwangx.git@master#egg=zmwangx-0.1.40',
     ],
     test_suite='tests',
 )

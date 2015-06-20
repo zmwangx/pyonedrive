@@ -6,6 +6,17 @@
 
 ``pyonedrive`` is a OneDrive API/CLI client using `OneDrive API v1.0 <https://dev.onedrive.com/README.htm>`_.
 
+Structure of this document
+--------------------------
+
+* `Features <#features>`_
+* `Getting started <#getting-started>`_
+* `Documentation <#documentation>`_
+* `Notes <#notes>`_
+* `Best practices <#best-practices>`_
+* `Known issues <#known-issues>`_
+* `Plans <#plans>`_
+
 Features
 --------
 
@@ -36,10 +47,11 @@ The names of the scripts are pretty much self-explanatory. To use any of these,
 you will need to first register an application and authorize the client. See
 the "Notes" section below.
 
-Installation
-------------
+Getting started
+---------------
 
-Clone the repository, then in the root of the directory, do ::
+To install this package, clone the repository, then in the root of the
+directory, do ::
 
   pip install .
 
@@ -50,7 +62,37 @@ or ::
 Note that some older versions of ``setuptools`` might not work; in that case,
 run ``pip install --upgrade pip`` first.
 
-API doc may be built by running::
+Once the package is installed, one still needs to `register an application
+<https://dev.onedrive.com/app-registration.htm>`_ and save the credentials to
+``~/.config/onedrive/conf.ini`` (or ``$XDG_CONFIG_HOME/onedrive/conf.ini``, if
+``XDG_CONFIG_HOME`` is defined in your environment) to make any meaningful use
+of this package. The config file should be in the following format::
+
+    [oauth]
+    client_id = XXXXXXXXXXXXXXXX
+    client_secret = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    refresh_token = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+Note that the package assumes that full access has been granted (``wl.signin
+wl.offline_access onedrive.readwrite``) to the client. If not, some API methods
+might fail with ``onedrive.exceptions.APIRequestError``.
+
+In case one doesn't have a refresh token yet, it can be automatically generated
+and written to the config file by running ::
+
+    onedrive-auth
+
+(requires tty interaction and authorization in the browser). Just make sure
+``client_id`` and ``client_secret`` are present in the config file before
+running ``onedrive-auth``.
+
+Documentation
+-------------
+
+For console scripts, you may get usage instructions and option listings with
+the ``-h, --help`` flag.
+
+API doc may be built by running ::
 
   pip install tox
   tox docs
@@ -60,37 +102,20 @@ This will build HTML docs in ``docs/build/html``.
 Notes
 -----
 
-* Note that this package depends on some helper modules from my ``zmwangx``
-  package (`link <https://github.com/zmwangx/pyzmwangx>`_). ``setuptools`` will
-  automatically install the package through git (see the "Installation"
-  section).  Use a virtualenv if you don't want to pollute your global
-  environment.
-
-* One needs to `register an application
-  <https://dev.onedrive.com/app-registration.htm>`_ and save the credentials to
-  ``~/.config/onedrive/conf.ini``. The config file should be in the following
-  format::
-
-    [oauth]
-    client_id = XXXXXXXXXXXXXXXX
-    client_secret = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-    refresh_token = XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-
-  In case one doesn't have the refresh token, it can be automatically generated
-  and written to the config file by running ::
-
-    onedrive-auth
-
-  (requires tty interaction). Just make sure ``client_id`` and
-  ``client_secret`` are present in the config file before running
-  ``onedrive-auth``.
+* This package depends on some helper modules from my personal ``zmwangx``
+  package (`link <https://github.com/zmwangx/pyzmwangx>`_). Fairly recent
+  versions of ``setuptools`` will automatically install the package through git
+  (see the "Installation" section).  Use a virtualenv if you don't want to
+  pollute your global environment.
 
 * This package is yet to reach stable (or even beta), so the API is subject to
   compatibility-breaking changes. I won't break it without a good reason,
   though.
 
-  CLI, on the other hand, should be mostly backward-compatible. There could be
-  additions, and subtle behaviors in edge cases might be tweaked.
+  CLI, on the other hand, should be mostly backward-compatible, so it should be
+  safe to use the console scripts in shell scripts (as long as you don't parse
+  the output of, say, ``onedrive-ls``). There could be additions, and subtle
+  behaviors in edge cases might be tweaked.
 
 Best practices
 --------------
@@ -132,7 +157,8 @@ Known issues
 
   In fact, at the moment of writing, the copy API is not very reliable (it
   might randomly fail on large files, e.g., those greater than 1GB). The API is
-  labeled as preview though (2015-06-15), so hopefully it will get better.
+  currently labeled as preview though (2015-06-15), so hopefully it will get
+  better.
 
 * Extended attributes and especially **resource forks** are not supported,
   because (1) I don't know how to upload them; (2) OneDrive doesn't support

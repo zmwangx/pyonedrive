@@ -20,6 +20,23 @@ import onedrive.api
 import onedrive.exceptions
 import onedrive.log
 
+def _init_client():
+    """Init a client or exit with 1.
+
+    Print a helpful error message and exit with code 1 if client
+    initialization somehow fails due to problematic config file.
+
+    Returns
+    -------
+    onedrive.api.OneDriveAPIClient
+
+    """
+    try:
+        return onedrive.api.OneDriveAPIClient()
+    except OSError as err:
+        cerror(str(err))
+        exit(1)
+
 class Uploader(object):
     """Uploader that uploads files to a given OneDrive directory.
 
@@ -108,7 +125,7 @@ def cli_upload():
     }
 
     onedrive.log.logging_setup()
-    client = onedrive.api.OneDriveAPIClient()
+    client = _init_client()
 
     # check existence of remote directory
     directory = args.directory
@@ -137,7 +154,7 @@ def cli_geturl():
     args = parser.parse_args()
 
     onedrive.log.logging_setup()
-    client = onedrive.api.OneDriveAPIClient()
+    client = _init_client()
 
     path = args.path
     try:
@@ -315,7 +332,7 @@ def cli_ls():
     args = parser.parse_args()
 
     onedrive.log.logging_setup()
-    client = onedrive.api.OneDriveAPIClient()
+    client = _init_client()
 
     paths = args.paths
     dironly = args.directory
@@ -417,7 +434,7 @@ def cli_download():
     args = parser.parse_args()
 
     onedrive.log.logging_setup()
-    client = onedrive.api.OneDriveAPIClient()
+    client = _init_client()
 
     num_files = len(args.paths)
     jobs = min(args.jobs, num_files) if args.jobs > 0 else num_files
@@ -442,7 +459,7 @@ def cli_mkdir():
     args = parser.parse_args()
 
     onedrive.log.logging_setup()
-    client = onedrive.api.OneDriveAPIClient()
+    client = _init_client()
 
     returncode = 0
     for path in args.paths:
@@ -469,7 +486,7 @@ def cli_rm():
     args = parser.parse_args()
 
     onedrive.log.logging_setup()
-    client = onedrive.api.OneDriveAPIClient()
+    client = _init_client()
 
     returncode = 0
     for path in args.paths:
@@ -490,7 +507,7 @@ def cli_rmdir():
     args = parser.parse_args()
 
     onedrive.log.logging_setup()
-    client = onedrive.api.OneDriveAPIClient()
+    client = _init_client()
 
     returncode = 0
     for path in args.paths:
@@ -611,7 +628,7 @@ def cli_mv_or_cp(util, util_name=None):
         else:
             # no -t or -T flag
             # automatically decide based on whether dest is an existing directory
-            client = onedrive.api.OneDriveAPIClient()
+            client = _init_client()
             if client.isdir(args.paths[1]):
                 # mv/cp SOURCE DIRECTORY
                 source, directory = args.paths
@@ -638,7 +655,7 @@ def cli_mv_or_cp(util, util_name=None):
                         for source in sources]
 
     if client is None:
-        client = onedrive.api.OneDriveAPIClient()
+        client = _init_client()
 
     # 3, 2, 1, action!
     returncode = 0
@@ -687,7 +704,7 @@ def cli_metadata():
     args = parser.parse_args()
 
     onedrive.log.logging_setup()
-    client = onedrive.api.OneDriveAPIClient()
+    client = _init_client()
 
     path = args.path
     try:

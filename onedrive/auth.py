@@ -24,6 +24,12 @@ class OneDriveOAuthClient(object):
         assume the refresh token is already present in the config file,
         and raise if it is not available.
 
+    Returns
+    -------
+    OSError
+        If the config file or any necessary config section/parameter is
+        missing.
+
     """
 
     API_ENDPOINT = "https://api.onedrive.com/v1.0/"
@@ -35,10 +41,29 @@ class OneDriveOAuthClient(object):
         ``authorize`` parameter is set to ``True``.
 
         """
-        conf = zmwangx.config.INIConfig("onedrive/conf.ini")
+        instruction_message = ("see https://github.com/zmwangx/pyonedrive#getting-started "
+                               "for instructions on configuring your client")
+        try:
+            conf = zmwangx.config.INIConfig("onedrive/conf.ini")
+        except OSError as err:
+            raise OSError("%s; %s" % (str(err), instruction_message))
+
+        if not conf.has_section("oauth"):
+            raise OSError("'oauth' section missing from config file '%s'; %s" %
+                          (conf._config_file, instruction_message))
+
         self._conf = conf
-        self._client_id = conf["oauth"]["client_id"]
-        self._client_secret = conf["oauth"]["client_secret"]
+
+        try:
+            self._client_id = conf["oauth"]["client_id"]
+        except KeyError:
+            raise OSError("'client_id' missing from config file '%s'; %s" %
+                          (conf._config_file, instruction_message))
+        try:
+            self._client_secret = conf["oauth"]["client_secret"]
+        except KeyError:
+            raise OSError("'client_secret' missing from config file '%s'; %s" %
+                          (conf._config_file, instruction_message))
         try:
             self._redirect_uri = conf["oauth"]["redirect_uri"]
         except KeyError:
@@ -47,7 +72,13 @@ class OneDriveOAuthClient(object):
         if authorize:
             self.authorize_client()
         else:
-            self._refresh_token = conf["oauth"]["refresh_token"]
+            try:
+                self._refresh_token = conf["oauth"]["refresh_token"]
+            except KeyError:
+                msg = ("'refresh_token' missing from config file '%s' -- "
+                       "you might want to run onedrive-auth to generate a refresh token; %s" %
+                       (conf._config_file, instruction_message))
+                raise OSError(msg)
             self.refresh_access_token()
 
         self.client = requests.session()
