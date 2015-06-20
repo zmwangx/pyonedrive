@@ -4,10 +4,7 @@
 
 *Caution: This package is Python 3.3+ only.*
 
-``pyonedrive`` is a OneDrive command line client (and at the same time, an API
-client) using `OneDrive API v1.0 <https://dev.onedrive.com/README.htm>`_.
-
-API docs for developers is hosted on Read the Docs: http://pyonedrive.rtfd.org.
+``pyonedrive`` is a OneDrive API/CLI client using `OneDrive API v1.0 <https://dev.onedrive.com/README.htm>`_.
 
 Features
 --------
@@ -52,6 +49,13 @@ or ::
 
 Note that some older versions of ``setuptools`` might not work; in that case,
 run ``pip install --upgrade pip`` first.
+
+API doc may be built by running::
+
+  pip install tox
+  tox docs
+
+This will build HTML docs in ``docs/build/html``.
 
 Notes
 -----

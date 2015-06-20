@@ -1,4 +1,6 @@
 Sphinx==1.2.2
+Pygments==1.6
 arrow
 requests
 git+git://github.com/zmwangx/pyzmwangx.git@master
+-e .
