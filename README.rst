@@ -53,7 +53,7 @@ Getting started
 To install this package, clone the repository, then in the root of the
 directory, do ::
 
-  pip install .
+  pip install --process-dependency-links .
 
 or ::
 
