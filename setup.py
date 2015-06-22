@@ -36,7 +36,7 @@ setuptools.setup(
     install_requires=[
         'arrow',
         'requests',
-        'zmwangx>=0.1.40+gc4ea814',
+        'zmwangx>=0.1.40+g256c304',
     ],
     entry_points={
         'console_scripts': [
