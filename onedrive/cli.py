@@ -12,13 +12,14 @@ import posixpath
 import sys
 import textwrap
 
-from zmwangx.colorout import cerror, cfatal_error, cprogress
+from zmwangx.colorout import cerror, cfatal_error, cprogress, cerrnewline
 import zmwangx.humansize
 import zmwangx.pbar
 
 import onedrive.api
 import onedrive.exceptions
 import onedrive.log
+import onedrive.util
 
 def _init_client():
     """Init a client or exit with 1.
@@ -146,6 +147,91 @@ def cli_upload():
         except KeyboardInterrupt:
             returncodes.append(1)
         return 1 if 1 in returncodes else 0
+
+def cli_dirupload():
+    """Directory upload CLI."""
+    # TODO: how to handle uploading to an existing and non-empty directory tree?
+    # TODO: concurrency
+    parser = argparse.ArgumentParser()
+    parser.add_argument("remotedir", help="remote *parent* directory to upload to")
+    parser.add_argument("localdir", help="path to the local directory to upload")
+    parser.add_argument("-n", "--name",
+                        help="""name of the remote directory (by default
+                        it is just the basename of the local
+                        directory)""")
+    args = parser.parse_args()
+
+    localroot = os.path.abspath(args.localdir)
+    remoteparent = args.remotedir
+    remotename = args.name if args.name is not None else os.path.basename(localroot)
+    remoteroot = posixpath.join(remoteparent, remotename)
+
+    onedrive.log.logging_setup()
+    client = _init_client()
+
+    if not os.path.isdir(localroot):
+        cfatal_error("'%s' is not an existing local directory" % localroot)
+        return 1
+
+    if not client.isdir(remoteparent):
+        cfatal_error("'%s' is not an existing remote directory" % remoteparent)
+        return 1
+
+    try:  # KeyboardInterrupt guard block
+        show_progress = zmwangx.pbar.autopbar()
+        if show_progress:
+            cprogress("creating directories...")
+        # uploads is a list of tuples (remotedir, localfile, filesize) to upload
+        # TODO: default exclusions (e.g., .DS_Store) and user-specified exclusions
+        # TODO: save calls by creating leaves only (topdown false, and use a
+        # set to keep track of already created relpaths, and once a leaf is
+        # created, add to the set itself and all its parents)
+        uploads = []
+        for localdir, _, files in os.walk(localroot):
+            normalized_relpath = onedrive.util.normalized_posixpath(
+                os.path.relpath(localdir, start=localroot))
+            remotedir = posixpath.normpath(posixpath.join(remoteroot, normalized_relpath))
+            client.makedirs(remotedir, exist_ok=True)  # TODO: exist_ok?
+            if show_progress:
+                cprogress(remotedir)
+
+            for filename in files:
+                localfile = os.path.join(localdir, filename)
+                uploads.append((remotedir, localfile, os.path.getsize(localfile)))
+
+        if show_progress:
+            cerrnewline()
+
+        # upload files in ascending order of filesize
+        uploads = sorted(uploads, key=lambda upload: upload[2])
+        returncode = 0
+        total = remaining = len(uploads)
+        total_bytes = remaining_bytes = sum([upload[2] for upload in uploads])
+        if show_progress:
+            cprogress("uploading %d files..." % total)
+
+        for upload in uploads:
+            remotedir, localfile, filesize = upload
+            if show_progress:
+                cprogress("remaining: %d/%d files, %s/%s" %
+                          (remaining, total,
+                           zmwangx.humansize.humansize(remaining_bytes, prefix="iec", unit=""),
+                           zmwangx.humansize.humansize(total_bytes, prefix="iec", unit="")))
+            try:
+                client.upload(remotedir, localfile, show_progress=show_progress)
+                cprogress("finished uploading '%s'" % localfile)
+            except Exception as err:
+                cerror("failed to upload '%s': %s: %s" %
+                       (localfile, type(err).__name__, str(err)))
+                returncode = 1
+
+            remaining -= 1
+            remaining_bytes -= filesize
+
+        return returncode
+    except KeyboardInterrupt:
+        cerror("interrupted" % localfile)
+        return 1
 
 def cli_geturl():
     """Get URL CLI."""

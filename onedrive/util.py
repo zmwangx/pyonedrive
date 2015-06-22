@@ -2,6 +2,8 @@
 
 """Some shared utilities."""
 
+import os
+import posixpath
 import urllib.parse
 
 def pop_query_from_url(url, query_variable):
@@ -35,3 +37,19 @@ def pop_query_from_url(url, query_variable):
         pass
     new_query = urllib.parse.urlencode(query_dict, doseq=True)
     return urllib.parse.urlunparse((scheme, netloc, path, params, new_query, fragment))
+
+def normalized_posixpath(path):
+    """Normalize an OS-dependent path to a POSIX path.
+
+    E.g., a ntpath ``"a\\b"`` will be normalized to ``"a/b"``.
+
+    Parameters
+    ----------
+    path : str
+
+    Returns
+    -------
+    normalized_path : str
+
+    """
+    return posixpath.join(*os.path.normpath(path).split(os.sep))
