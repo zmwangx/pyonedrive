@@ -2,6 +2,7 @@
 
 """Authenticate with OneDrive's API and make authenticated HTTP requests."""
 
+import logging
 import time
 import urllib.parse
 import webbrowser
@@ -69,6 +70,8 @@ class OneDriveOAuthClient(object):
         except KeyError:
             self._redirect_uri = "https://login.live.com/oauth20_desktop.srf"
 
+        self.client = requests.Session()
+
         if authorize:
             self.authorize_client()
         else:
@@ -80,9 +83,6 @@ class OneDriveOAuthClient(object):
                        (conf._config_file, instruction_message))
                 raise OSError(msg)
             self.refresh_access_token()
-
-        self.client = requests.session()
-        self.client.params.update({"access_token": self._access_token})
 
     def authorize_client(self):
         """Authorize the client using the code flow."""
@@ -149,8 +149,8 @@ class OneDriveOAuthClient(object):
                                         data=payload, headers=headers)
         onedrive.log.log_response(refresh_request)
         self._access_token = refresh_request.json()["access_token"]
-        # deduct a minute from expire time just to be safe
-        self._expires = time.time() + refresh_request.json()["expires_in"] - 60
+        self._expires = time.time() + refresh_request.json()["expires_in"]
+        self.client.params.update({"access_token": self._access_token})
 
     def request(self, method, url, **kwargs):
         """HTTP request with OAuth."""
@@ -162,6 +162,13 @@ class OneDriveOAuthClient(object):
         response = self.client.request(method, url, **kwargs)
 
         onedrive.log.log_response(response, path=path)
+
+        if response.status_code == 401:
+            # refresh token and try again
+            logging.warning("got HTTP 401; refreshing token and retrying")
+            self.refresh_access_token()
+            response = self.client.request(method, url, **kwargs)
+            onedrive.log.log_response(response, path=path)
 
         return response
 
