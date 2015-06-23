@@ -82,6 +82,11 @@ class OneDriveOAuthClient(object):
                        "you might want to run onedrive-auth to generate a refresh token; %s" %
                        (conf._config_file, instruction_message))
                 raise OSError(msg)
+
+        try:
+            self._access_token = conf["oauth"]["access_token"]
+            self._expires = int(conf["oauth"]["expires"])
+        except KeyError:
             self.refresh_access_token()
 
     def authorize_client(self):
@@ -149,8 +154,12 @@ class OneDriveOAuthClient(object):
                                         data=payload, headers=headers)
         onedrive.log.log_response(refresh_request)
         self._access_token = refresh_request.json()["access_token"]
-        self._expires = time.time() + refresh_request.json()["expires_in"]
+        self._expires = int(time.time()) + refresh_request.json()["expires_in"]
         self.client.params.update({"access_token": self._access_token})
+
+        self._conf["oauth"]["access_token"] = self._access_token
+        self._conf["oauth"]["expires"] = str(self._expires)
+        self._conf.rewrite_configs()
 
     def request(self, method, url, **kwargs):
         """HTTP request with OAuth."""

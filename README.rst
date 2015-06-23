@@ -117,6 +117,10 @@ Notes
   the output of, say, ``onedrive-ls``). There could be additions, and subtle
   behaviors in edge cases might be tweaked.
 
+* Your config file is routinely overwritten with new tokens, so do not put
+  comments in the config file (they are routinely wiped), and do not rely on
+  the options having a particular order (not guaranteed).
+
 Best practices
 --------------
 
