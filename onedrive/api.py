@@ -13,7 +13,7 @@ import urllib.parse
 import arrow
 import requests
 
-from zmwangx.colorout import cprogress, crprogress, cerrnewline
+from zmwangx.colorout import cprogress, crprogress, cwarning, cerrnewline
 import zmwangx.hash
 import zmwangx.pbar
 
@@ -143,21 +143,26 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         path = posixpath.join(directory, filename)
 
         # check remote file existence
+        remote_metadata = None
         if check_remote:
             try:
-                metadata = self.metadata(path)
-                if "folder" in metadata:
+                remote_metadata = self.metadata(path)
+                if "folder" in remote_metadata:
                     # remote is an existing folder, fail no matter what
                     if conflict_behavior == "fail":
                         raise onedrive.exceptions.FileExistsError(
-                            path=path, type="directory", url=metadata["webUrl"])
+                            path=path, type="directory", url=remote_metadata["webUrl"])
                     else:
                         raise onedrive.exceptions.IsADirectoryError(path=path)
                 else:
-                    # remote is an existing file, only fail if conflict behavior is fail
-                    if conflict_behavior == "fail":
+                    # remote is an existing file, raise if compare_hash
+                    # is False and comflict_behavior is "fail";
+                    # otherwise, defer raising after the local SHA-1 sum
+                    # has been computed and compared against the
+                    # existing remote file
+                    if not compare_hash and conflict_behavior == "fail":
                         raise onedrive.exceptions.FileExistsError(
-                            path=path, type="file", url=metadata["webUrl"])
+                            path=path, type="file", url=remote_metadata["webUrl"])
             except onedrive.exceptions.FileNotFoundError:
                 pass
 
@@ -166,7 +171,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             return self._simple_upload(directory, local_path,
                                        conflict_behavior=conflict_behavior,
                                        compare_hash=compare_hash,
-                                       show_progress=show_progress)
+                                       show_progress=show_progress,
+                                       remote_metadata=remote_metadata)
 
         # calculate local file hash
         if compare_hash:
@@ -175,6 +181,20 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             local_sha1sum = zmwangx.hash.file_hash(
                 local_path, "sha1", show_progress=show_progress).lower()
             logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
+
+            # if remote exists
+            if remote_metadata is not None:
+                remote_sha1sum = remote_metadata["file"]["hashes"]["sha1Hash"].lower()
+                if remote_sha1sum == local_sha1sum:
+                    # remote exists and has the same hash
+                    if show_progress:
+                        cwarning("'%s': file with same hash already exists" % filename)
+                    return
+                else:
+                    # conflict
+                    if conflict_behavior == "fail":
+                        raise onedrive.exceptions.FileExistsError(
+                            path=path, type="file", url=remote_metadata["webUrl"])
 
             # try to load a saved session, which is not available in no
             # check mode (without checksumming, the file might be
@@ -286,14 +306,19 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         * ``conflict_behavior``;
         * ``compare_hash``;
-        * ``show_progress``.
+        * ``show_progress``;
+        * ``remote_metadata``: metadata object of the existing remote
+          file (if any).
 
         """
         conflict_behavior = kwargs.pop("conflict_behavior", "fail")
         compare_hash = kwargs.pop("compare_hash", True)
         show_progress = kwargs.pop("show_progress", False)
+        remote_metadata = kwargs.pop("remote_metadata", None)
 
         filename = os.path.basename(local_path)
+        path = posixpath.join(directory, filename)
+        encoded_path = urllib.parse.quote(path)
 
         # calculate local file hash
         if compare_hash:
@@ -302,8 +327,21 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             local_sha1sum = zmwangx.hash.file_hash(local_path, "sha1").lower()
             logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
 
-        path = posixpath.join(directory, filename)
-        encoded_path = urllib.parse.quote(path)
+            # if remote exists
+            if remote_metadata is not None:
+                remote_sha1sum = remote_metadata["file"]["hashes"]["sha1Hash"].lower()
+                if remote_sha1sum == local_sha1sum:
+                    # remote exists and has the same hash
+                    if show_progress:
+                        cerrnewline()
+                        cwarning("'%s': file with same hash already exists" % filename)
+                    return
+                else:
+                    # conflict
+                    if conflict_behavior == "fail":
+                        cerrnewline()
+                        raise onedrive.exceptions.FileExistsError(
+                            path=path, type="file", url=remote_metadata["webUrl"])
 
         if show_progress:
             crprogress("%s: uploading..." % filename)
