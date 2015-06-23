@@ -193,14 +193,11 @@ def cli_dirupload():
             remotedir = posixpath.normpath(posixpath.join(remoteroot, normalized_relpath))
             client.makedirs(remotedir, exist_ok=True)  # TODO: exist_ok?
             if show_progress:
-                cprogress(remotedir)
+                print(remotedir, file=sys.stderr)
 
             for filename in files:
                 localfile = os.path.join(localdir, filename)
                 uploads.append((remotedir, localfile, os.path.getsize(localfile)))
-
-        if show_progress:
-            cerrnewline()
 
         # upload files in ascending order of filesize
         uploads = sorted(uploads, key=lambda upload: upload[2])
@@ -446,7 +443,7 @@ def cli_ls():
                 returncode = 1
 
         # first list files, if any
-        for filepath, filemetadata in files:
+        for _, filemetadata in files:
             _cli_ls_print_entry(filemetadata, long=long, human=human)
 
         if not dirs:
@@ -466,7 +463,7 @@ def cli_ls():
         try:
             _cli_ls_single_directory(client, firstdirpath, metadata=firstdirmetadata, **kwargs)
         except Exception as err:
-            cerror("failed to list '%s': %s: %s" % (firstdirpath,  type(err).__name__, str(err)))
+            cerror("failed to list '%s': %s: %s" % (firstdirpath, type(err).__name__, str(err)))
 
         for dirpath, dirmetadata in dirs[1:]:
             if not dironly or tree:
@@ -475,7 +472,7 @@ def cli_ls():
             try:
                 _cli_ls_single_directory(client, dirpath, metadata=dirmetadata, **kwargs)
             except Exception as err:
-                cerror("failed to list '%s': %s: %s" % (dirpath,  type(err).__name__, str(err)))
+                cerror("failed to list '%s': %s: %s" % (dirpath, type(err).__name__, str(err)))
 
     except KeyboardInterrupt:
         cerror("interrupted")
