@@ -7,13 +7,14 @@
 import os
 import logging
 import posixpath
+import sys
 import time
 import urllib.parse
 
 import arrow
 import requests
 
-from zmwangx.colorout import cprogress, crprogress, cwarning, cerrnewline
+from zmwangx.colorout import cprogress, cwarning
 import zmwangx.hash
 import zmwangx.pbar
 
@@ -177,7 +178,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         # calculate local file hash
         if compare_hash:
             if show_progress:
-                cprogress("%s: hashing progress:" % filename)
+                print("%s: hashing progress:" % filename, file=sys.stderr)
             local_sha1sum = zmwangx.hash.file_hash(
                 local_path, "sha1", show_progress=show_progress).lower()
             logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
@@ -206,8 +207,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
 
         if session:
             if show_progress:
-                cprogress("%s: loaded unfinished session from disk" % filename)
-                cprogress("%s: retrieving upload session" % filename)
+                print("%s: loaded unfinished session from disk" % filename, file=sys.stderr)
+                print("%s: retrieving upload session" % filename, file=sys.stderr)
             upload_url = session.upload_url
             position = self._get_upload_position(path, upload_url, session)
         else:
@@ -219,7 +220,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         if show_progress:
             if compare_hash:
                 # print "upload progress:" to distinguish from hashing progress
-                cprogress("%s: upload progress:" % filename)
+                print("%s: upload progress:" % filename, file=sys.stderr)
             pbar = zmwangx.pbar.ProgressBar(total, preprocessed=position)
 
         with open(os.path.realpath(local_path), "rb") as fileobj:
@@ -323,7 +324,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         # calculate local file hash
         if compare_hash:
             if show_progress:
-                crprogress("%s: hashing..." % filename)
+                sys.stderr.write("\r%s: hashing..." % filename)
             local_sha1sum = zmwangx.hash.file_hash(local_path, "sha1").lower()
             logging.info("SHA-1 digest of local file '%s': %s", local_path, local_sha1sum)
 
@@ -333,27 +334,27 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                 if remote_sha1sum == local_sha1sum:
                     # remote exists and has the same hash
                     if show_progress:
-                        cerrnewline()
+                        print("", file=sys.stderr)
                         cwarning("'%s': file with same hash already exists" % filename)
                     return
                 else:
                     # conflict
                     if conflict_behavior == "fail":
-                        cerrnewline()
+                        print("", file=sys.stderr)
                         raise onedrive.exceptions.FileExistsError(
                             path=path, type="file", url=remote_metadata["webUrl"])
 
         if show_progress:
-            crprogress("%s: uploading..." % filename)
+            sys.stderr.write("\r%s: uploading..." % filename)
         with open(local_path, "rb") as fileobj:
             put_response = self.put("drive/root:/%s:/content" % encoded_path,
                                     params={"@name.conflictBehavior": conflict_behavior},
                                     data=fileobj)
             if put_response.status_code in {200, 201}:
-                crprogress("%s: upload complete" % filename)
-                cerrnewline()
+                sys.stderr.write("\r%s: upload complete" % filename)
+                print("", file=sys.stderr)
             else:
-                cerrnewline()
+                print("", file=sys.stderr)
                 raise onedrive.exceptions.UploadError(
                     path=path, response=put_response, request_desc="simple upload request")
 
@@ -894,7 +895,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         size = metadata["size"]
         if show_progress:
             if compare_hash:
-                cprogress("download progress:")
+                print("download progress:", file=sys.stderr)
             pbar = zmwangx.pbar.ProgressBar(size)
 
         download_request = requests.get(url=metadata["@content.downloadUrl"], stream=True)
@@ -916,7 +917,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         if compare_hash:
             remote_sha1sum = metadata["file"]["hashes"]["sha1Hash"].lower()
             if show_progress:
-                cprogress("hashing progress:")
+                print("hashing progress:", file=sys.stderr)
             local_sha1sum = zmwangx.hash.file_hash(
                 tmp_path, "sha1", show_progress=show_progress).lower()
             if remote_sha1sum != local_sha1sum:
