@@ -64,7 +64,7 @@ class SavedUploadSession(object):
         if "XDG_DATA_HOME" in os.environ:
             home = os.path.join(os.environ["XDG_DATA_HOME"], "onedrive")
         else:
-            home = os.path.expanduser("~/.local/share", "onedrive")
+            home = os.path.expanduser("~/.local/share/onedrive")
 
         session_id = hashlib.sha1("{path}\n{sha1sum}".format(
             path=remote_path, sha1sum=sha1sum).encode("utf-8")).hexdigest()
