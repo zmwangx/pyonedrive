@@ -79,9 +79,9 @@ def cli_upload():
     parser.add_argument("directory", help="remote directory to upload to")
     parser.add_argument("local_paths", metavar="PATH", nargs="+",
                         help="path(s) of local file(s) to upload")
-    parser.add_argument("-j", "--jobs", type=int, default=8,
+    parser.add_argument("-j", "--jobs", type=int, default=4,
                         help="""number of concurrect uploads (i.e.,
-                        workers), use 0 for unlimited; default is 8""")
+                        workers), use 0 for unlimited; default is 4""")
     parser.add_argument("-f", "--force", action="store_true",
                         help="overwrite if the remote file already exists")
     parser.add_argument("-c", "--chunk-size", type=int, default=10485760,
