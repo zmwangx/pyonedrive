@@ -266,7 +266,7 @@ class UploadError(APIRequestError):
         self.saved_session = saved_session
 
         path_desc = "'%s'" % path if path is not None else "unspecified file"
-        upload_error_general_desc = "error occured when trying to upload '%s'" % path_desc
+        upload_error_general_desc = "error occured when trying to upload %s" % path_desc
 
         if self.msg is None:
             self.msg = upload_error_general_desc
