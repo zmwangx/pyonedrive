@@ -12,6 +12,7 @@ import requests
 import zmwangx.config
 from zmwangx.colorout import cprogress, cprompt
 
+import onedrive.exceptions
 import onedrive.log
 
 class OneDriveOAuthClient(object):
@@ -132,8 +133,13 @@ class OneDriveOAuthClient(object):
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
         redeem_request = requests.post("https://login.live.com/oauth20_token.srf",
                                        data=payload, headers=headers)
-        self._access_token = redeem_request.json()["access_token"]
-        self._refresh_token = redeem_request.json()["refresh_token"]
+        response_json = redeem_request.json()
+        if redeem_request.status_code == 200 and "access_token" in response_json:
+            self._access_token = redeem_request.json()["access_token"]
+            self._refresh_token = redeem_request.json()["refresh_token"]
+        else:
+            raise onedrive.exceptions.APIRequestError(response=redeem_request,
+                                                      request_desc="redeeming request")
 
         # rewrite config file
         self._conf["oauth"]["refresh_token"] = self._refresh_token
@@ -153,8 +159,18 @@ class OneDriveOAuthClient(object):
         refresh_request = requests.post("https://login.live.com/oauth20_token.srf",
                                         data=payload, headers=headers)
         onedrive.log.log_response(refresh_request)
-        self._access_token = refresh_request.json()["access_token"]
-        self._expires = int(time.time()) + refresh_request.json()["expires_in"]
+        response_json = refresh_request.json()
+        if refresh_request.status_code == 200 and "access_token" in response_json:
+            self._access_token = refresh_request.json()["access_token"]
+            self._expires = int(time.time()) + refresh_request.json()["expires_in"]
+        else:
+            msg = ("failed to refresh access token; refresh request returned %d: %s; "
+                   "refresh token might be invalid -- have you updated your Microsoft "
+                   "account password? you may need to reauthorize by running onedrive-auth"
+                   % (refresh_request.status_code, refresh_request.text))
+            raise onedrive.exceptions.APIRequestError(msg=msg, response=refresh_request,
+                                                      request_desc="refresh request")
+
         self.client.params.update({"access_token": self._access_token})
 
         self._conf["oauth"]["access_token"] = self._access_token

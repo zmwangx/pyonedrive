@@ -12,7 +12,7 @@ import posixpath
 import sys
 import textwrap
 
-from zmwangx.colorout import cerror, cfatal_error, cprogress, cerrnewline
+from zmwangx.colorout import cerror, cfatal_error, cprogress
 import zmwangx.humansize
 import zmwangx.pbar
 
