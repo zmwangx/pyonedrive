@@ -61,8 +61,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         simple_upload_threshold : int, optional
             Largest file size, in bytes, for using the simple upload
             API; if the file size exeeds the threshold, then the
-            resumable upload API is used instead. Default is 10485760
-            (10 MiB). This value should not exceed 104857600 (100 MiB).
+            resumable upload API is used instead. Default is 1048576
+            (1 MiB). This value should not exceed 104857600 (100 MiB).
         compare_hash : bool, optional
             Whether to compare the SHA-1 digest of the local file and
             the uploaded file. Default is ``True``. Note that ``True``
@@ -111,7 +111,7 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         """
 
         conflict_behavior = kwargs.pop("conflict_behavior", "fail")
-        simple_upload_threshold = kwargs.pop("simple_upload_threshold", 10485760)
+        simple_upload_threshold = kwargs.pop("simple_upload_threshold", 1048576)
         compare_hash = kwargs.pop("compare_hash", True)
         check_remote = kwargs.pop("check_remote", True)
         chunk_size = kwargs.pop("chunk_size", 10485760)

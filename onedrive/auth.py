@@ -178,13 +178,28 @@ class OneDriveOAuthClient(object):
         self._conf.rewrite_configs()
 
     def request(self, method, url, **kwargs):
-        """HTTP request with OAuth."""
+        """HTTP request with OAuth and safeguards."""
         path = kwargs.pop("path", None)
         url = urllib.parse.urljoin(self.API_ENDPOINT, url)
 
         if time.time() >= self._expires:
             self.refresh_access_token()
-        response = self.client.request(method, url, **kwargs)
+
+        # always enforce a connect & read timeout of 10 seconds
+        if "timeout" not in kwargs:
+            kwargs["timeout"] = 10
+
+        # two tries
+        request_err = None
+        for _ in range(0, 1):
+            try:
+                response = self.client.request(method, url, **kwargs)
+                break
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as err:
+                request_err = err
+                time.sleep(10)
+        else:
+            raise request_err
 
         onedrive.log.log_response(response, path=path)
 

@@ -98,11 +98,11 @@ def cli_upload():
                         if you are running a great number of workers
                         concurrently, or if you are extremely concerned
                         about memory usage""")
-    parser.add_argument("--simple-upload-threshold", type=int, default=10485760,
+    parser.add_argument("--simple-upload-threshold", type=int, default=1048576,
                         help="""file size threshold (in bytes) for using
                         chunked, resumable upload API instead of simple,
                         one shot API (less overhead, good for uploading
-                        a great number of small files); default is 10
+                        a great number of small files); default is 1
                         MiB, and the threshold should not exceed 100
                         MiB""")
     parser.add_argument("--no-check", action="store_true",
@@ -152,6 +152,7 @@ def cli_dirupload():
     """Directory upload CLI."""
     # TODO: how to handle uploading to an existing and non-empty directory tree?
     # TODO: concurrency
+    # TODO: option to skip creating directories (useful for resuming dirupload)
     parser = argparse.ArgumentParser()
     parser.add_argument("remotedir", help="remote *parent* directory to upload to")
     parser.add_argument("localdir", help="path to the local directory to upload")
