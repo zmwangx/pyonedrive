@@ -69,8 +69,8 @@ class Uploader(object):
             return 1
         except Exception as err:
             # catch any exception in a multiprocessing environment
-            cerror("failed to upload '%s': %s: %s" %
-                   (local_path, type(err).__name__, str(err)))
+            cerror("failed to upload '%s' to '%s': %s: %s" %
+                   (local_path, self._directory, type(err).__name__, str(err)))
             return 1
 
 def cli_upload():
@@ -219,8 +219,8 @@ def cli_dirupload():
                 client.upload(remotedir, localfile, show_progress=show_progress)
                 cprogress("finished uploading '%s'" % localfile)
             except Exception as err:
-                cerror("failed to upload '%s': %s: %s" %
-                       (localfile, type(err).__name__, str(err)))
+                cerror("failed to upload '%s' to '%s': %s: %s" %
+                       (localfile, remotedir, type(err).__name__, str(err)))
                 returncode = 1
 
             remaining -= 1
