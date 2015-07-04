@@ -43,6 +43,7 @@ class OneDriveOAuthClient(object):
         ``authorize`` parameter is set to ``True``.
 
         """
+        # pylint: disable=protected-access
         instruction_message = ("see https://github.com/zmwangx/pyonedrive#getting-started "
                                "for instructions on configuring your client")
         try:
@@ -178,9 +179,18 @@ class OneDriveOAuthClient(object):
         self._conf.rewrite_configs()
 
     def request(self, method, url, **kwargs):
-        """HTTP request with OAuth and safeguards."""
+        """HTTP request with OAuth and safeguards.
+
+        The ``noretry`` keyword argument is used internally to determine
+        if another attempt should be made on a timeout, or HTTP 429 (Too
+        Many Requests), 500 (Internal Server Error), or 503 (Service
+        Unavailable). The default value is ``True``.
+
+        """
         path = kwargs.pop("path", None)
         url = urllib.parse.urljoin(self.API_ENDPOINT, url)
+
+        noretry = kwargs.pop("noretry", False)
 
         if time.time() >= self._expires:
             self.refresh_access_token()
@@ -189,26 +199,28 @@ class OneDriveOAuthClient(object):
         if "timeout" not in kwargs:
             kwargs["timeout"] = 10
 
-        # two tries
-        request_err = None
-        for _ in range(0, 1):
-            try:
-                response = self.client.request(method, url, **kwargs)
-                break
-            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as err:
-                request_err = err
-                time.sleep(10)
-        else:
-            raise request_err
+        try:
+            response = self.client.request(method, url, **kwargs)
+            onedrive.log.log_response(response, path=path)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as err:
+            if noretry:
+                raise
+            # sleep 10 seconds and try again
+            logging.warning("%s; retrying after 10 seconds", str(err))
+            time.sleep(10)
+            response = self.request(method, url, noretry=True, **kwargs)
 
-        onedrive.log.log_response(response, path=path)
-
-        if response.status_code == 401:
+        if response.status_code == 401 and not noretry:
             # refresh token and try again
             logging.warning("got HTTP 401; refreshing token and retrying")
             self.refresh_access_token()
-            response = self.client.request(method, url, **kwargs)
-            onedrive.log.log_response(response, path=path)
+            response = self.request(method, url, noretry=True, **kwargs)
+
+        if response.status_code in {429, 500, 503} and not noretry:
+            # sleep 10 seconds and try again
+            logging.warning("got HTTP %d; retrying after 10 seconds", response.status_code)
+            time.sleep(10)
+            response = self.request(method, url, noretry=True, **kwargs)
 
         return response
 
