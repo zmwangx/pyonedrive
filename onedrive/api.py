@@ -387,7 +387,12 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         """
         encoded_path = urllib.parse.quote(path)
         session_response = self.post("drive/root:/%s:/upload.createSession" % encoded_path,
-                                     json={"@name.conflictBehavior": conflict_behavior})
+                                     json={
+                                         "item": {
+                                             "@name.conflictBehavior": conflict_behavior,
+                                             "name": posixpath.basename(path),
+                                         }
+                                     })
         if session_response.status_code == 404:
             raise onedrive.exceptions.FileNotFoundError(path=posixpath.dirname(path),
                                                         type="directory")
