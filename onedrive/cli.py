@@ -5,10 +5,12 @@
 # pylint: disable=broad-except
 
 import argparse
+import ast
 import json
 import multiprocessing
 import os
 import posixpath
+import re
 import sys
 import textwrap
 
@@ -801,3 +803,80 @@ def cli_metadata():
         cerror("failed to get URL for '%s': %s: %s" %
                (path, type(err).__name__, str(err)))
         return 1
+
+def cli_rename():
+    """Batch renaming CLI."""
+    parser = argparse.ArgumentParser(description="Batch rename all items in a directory.")
+    parser.add_argument("-F", "--files-only", action="store_true",
+                        help="""only process files (by default direct
+                        subdirectories are also processed)""")
+    parser.add_argument("-d", "--dry-run", action="store_true",
+                        help="""print what would be renamed to stderr but don't do them""")
+    parser.add_argument("-s", "--show", action="store_true",
+                        help="""print what was renamed to what""")
+    parser.add_argument("stmts",
+                        help="""Python statement(s) to be executed on
+                        each filename; the statement(s) should modify
+                        the '_' variable, which holds the filename; note
+                        that the STL 're' module is already imported for
+                        you, and the statement(s) can also make use of a
+                        variable 'n', which is the one-based index of
+                        the filename currently being handled (indexed in
+                        alphabetical order)""")
+    parser.add_argument("directory", help="path to remote directory")
+    args = parser.parse_args()
+
+    stmts = args.stmts
+    try:
+        ast.parse(stmts)
+    except SyntaxError as err:
+        cfatal_error("invalid statements '%s': %s" % (stmts, str(err)))
+        return 1
+
+    onedrive.log.logging_setup()
+    client = _init_client()
+
+    directory = args.directory
+    try:
+        client.assert_dir(directory)
+    except Exception as err:
+        cfatal_error("%s: %s" % (type(err).__name__, str(err)))
+        return 1
+
+    returncode = 0
+    children = client.children(directory)
+    index = 0
+    for child in children:
+        if args.files_only and "folder" in child:
+            continue
+
+        oldname = child["name"]
+        index += 1
+        globaldict = {"re": re}
+        localdict = {"_": oldname, "n": index}
+        try:
+            # pylint: disable=exec-used
+            exec(stmts, globaldict, localdict)
+            newname = localdict["_"]
+        except Exception as err:
+            cerror("failed to generate new name for '%s': %s: %s" %
+                   (oldname, type(err).__name__, str(err)))
+            returncode = 1
+            continue
+
+        if oldname == newname:
+            continue
+
+        if args.dry_run or args.show:
+            print("%s => %s" % (oldname, newname))
+
+        if not args.dry_run:
+            try:
+                client.move(posixpath.join(directory, oldname),
+                            posixpath.join(directory, newname))
+            except Exception as err:
+                cerror("failed to move '%s' for '%s': %s: %s" %
+                       (oldname, newname, type(err).__name__, str(err)))
+                returncode = 1
+
+    return returncode
