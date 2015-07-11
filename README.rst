@@ -7,9 +7,12 @@
 ``pyonedrive`` is a OneDrive API/CLI client using `OneDrive API v1.0 <https://dev.onedrive.com/README.htm>`_.
 
 Structure of this document
---------------------------
+==========================
 
 * `Features <#features>`_
+
+  - `Experimental/incomplete features <#experimental-incomplete-features>`_
+
 * `Getting started <#getting-started>`_
 * `Documentation <#documentation>`_
 * `Notes <#notes>`_
@@ -19,7 +22,7 @@ Structure of this document
 * `License <#license>`_
 
 Features
---------
+========
 
 * Batch upload;
 * Batch download;
@@ -48,8 +51,15 @@ The names of the scripts are pretty much self-explanatory. To use any of these,
 you will need to first register an application and authorize the client. See
 the "Getting started" section below.
 
+Experimental/incomplete features
+--------------------------------
+
+* Directory upload (recursive), provided by the console script
+  ``onedrive-dirupload``;
+* Batch renaming, provided by the console script ``onedrive-rename``.
+
 Getting started
----------------
+===============
 
 To install this package, clone the repository, then in the root of the
 directory, do ::
@@ -88,7 +98,7 @@ and written to the config file by running ::
 running ``onedrive-auth``.
 
 Documentation
--------------
+=============
 
 For console scripts, you may get usage instructions and option listings with
 the ``-h, --help`` flag.
@@ -101,7 +111,7 @@ API doc may be built by running ::
 This will build HTML docs in ``docs/build/html``.
 
 Notes
------
+=====
 
 * This package depends on some helper modules from my personal ``zmwangx``
   package (`link <https://github.com/zmwangx/pyzmwangx>`_). Fairly recent
@@ -123,7 +133,7 @@ Notes
   the options having a particular order (not guaranteed).
 
 Best practices
---------------
+==============
 
 * For whatever reason, the OneDrive resumable upload API responds slow or drops
   connection altogether fairly often. Therefore, I have set a default base
@@ -148,7 +158,7 @@ Best practices
   option) only if there are a great number of concurrent jobs.
 
 Known issues
-------------
+============
 
 * Despite the timeout, very occasionally a request made through the
   ``requests`` module would stall, and there's little I can do in that case
@@ -170,7 +180,7 @@ Known issues
   them anyway.
 
 Plans
------
+=====
 
 A list of enhancement plans are `here
 <https://github.com/zmwangx/pyonedrive/labels/enhancement>`_ in the issue
