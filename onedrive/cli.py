@@ -462,7 +462,9 @@ def cli_ls():
         if not dironly or tree:
             if files:
                 print("")
-            print("%s:" % firstdirpath)
+            # do not print "dirname:" if we are only listing a single directory
+            if len(files) != 0 or len(dirs) != 1:
+                print("%s:" % firstdirpath)
         try:
             _cli_ls_single_directory(client, firstdirpath, metadata=firstdirmetadata, **kwargs)
         except Exception as err:

@@ -11,7 +11,7 @@ Structure of this document
 
 * `Features <#features>`_
 
-  - `Experimental/incomplete features <#experimental-incomplete-features>`_
+  - `Experimental/incomplete features <#experimentalincomplete-features>`_
 
 * `Getting started <#getting-started>`_
 * `Documentation <#documentation>`_
