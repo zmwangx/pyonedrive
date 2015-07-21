@@ -2,7 +2,11 @@
  pyonedrive
 ============
 
-*Caution: This package is Python 3.3+ only.*
+*Caution 1: This package is Python 3.3+ only.*
+
+*Caution 2: Development has been deferred indefinitely as of July*
+*20, 2015. However, contributions are welcome, and the maintainer will review*
+*pull requests in a timely manner.*
 
 ``pyonedrive`` is a OneDrive API/CLI client using `OneDrive API v1.0 <https://dev.onedrive.com/README.htm>`_.
 
