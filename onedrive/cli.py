@@ -182,8 +182,7 @@ def cli_dirupload():
 
     try:  # KeyboardInterrupt guard block
         show_progress = zmwangx.pbar.autopbar()
-        if show_progress:
-            cprogress("creating directories...")
+        cprogress("creating directories...")
         # uploads is a list of tuples (remotedir, localfile, filesize) to upload
         # TODO: default exclusions (e.g., .DS_Store) and user-specified exclusions
         # TODO: save calls by creating leaves only (topdown false, and use a
@@ -195,8 +194,7 @@ def cli_dirupload():
                 os.path.relpath(localdir, start=localroot))
             remotedir = posixpath.normpath(posixpath.join(remoteroot, normalized_relpath))
             client.makedirs(remotedir, exist_ok=True)  # TODO: exist_ok?
-            if show_progress:
-                print(remotedir, file=sys.stderr)
+            print(remotedir, file=sys.stderr)
 
             for filename in files:
                 localfile = os.path.join(localdir, filename)
@@ -207,16 +205,14 @@ def cli_dirupload():
         returncode = 0
         total = remaining = len(uploads)
         total_bytes = remaining_bytes = sum([upload[2] for upload in uploads])
-        if show_progress:
-            cprogress("uploading %d files..." % total)
+        cprogress("uploading %d files..." % total)
 
         for upload in uploads:
             remotedir, localfile, filesize = upload
-            if show_progress:
-                cprogress("remaining: %d/%d files, %s/%s" %
-                          (remaining, total,
-                           zmwangx.humansize.humansize(remaining_bytes, prefix="iec", unit=""),
-                           zmwangx.humansize.humansize(total_bytes, prefix="iec", unit="")))
+            cprogress("remaining: %d/%d files, %s/%s" %
+                      (remaining, total,
+                       zmwangx.humansize.humansize(remaining_bytes, prefix="iec", unit=""),
+                       zmwangx.humansize.humansize(total_bytes, prefix="iec", unit="")))
             try:
                 client.upload(remotedir, localfile, show_progress=show_progress)
                 cprogress("finished uploading '%s'" % localfile)
