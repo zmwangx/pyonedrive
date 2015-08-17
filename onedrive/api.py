@@ -351,10 +351,12 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
                                     params={"@name.conflictBehavior": conflict_behavior},
                                     data=fileobj)
             if put_response.status_code in {200, 201}:
-                sys.stderr.write("\r%s: upload complete" % filename)
-                print("", file=sys.stderr)
+                if show_progress:
+                    sys.stderr.write("\r%s: upload complete" % filename)
+                    print("", file=sys.stderr)
             else:
-                print("", file=sys.stderr)
+                if show_progress:
+                    print("", file=sys.stderr)
                 raise onedrive.exceptions.UploadError(
                     path=path, response=put_response, request_desc="simple upload request")
 
