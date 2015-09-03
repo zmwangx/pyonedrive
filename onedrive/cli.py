@@ -484,17 +484,15 @@ def cli_ls():
 class Downloader(object):
     """Downloader that downloads files from OneDrive."""
 
-    def __init__(self, client, compare_hash=True, show_progress=False):
+    def __init__(self, client, download_kwargs):
         """Set client and paramters."""
         self._client = client
-        self._compare_hash = compare_hash
-        self._show_progress = show_progress
+        self._download_kwargs = download_kwargs
 
     def __call__(self, path):
         """Download a remote file."""
         try:
-            self._client.download(path, compare_hash=self._compare_hash,
-                                  show_progress=self._show_progress)
+            self._client.download(path, **self._download_kwargs)
             cprogress("finished downloading '%s'" % path)
             return 0
         except KeyboardInterrupt:
@@ -515,17 +513,30 @@ def cli_download():
                         help="number of concurrect downloads, use 0 for unlimited; default is 0")
     parser.add_argument("--no-check", action="store_true",
                         help="do not compare checksum of remote and local files")
+    parser.add_argument("-f", "--fresh", action="store_true",
+                        help="discard any previous failed download")
+    parser.add_argument("--curl", dest="downloader", action="store_const", const="curl",
+                        help="use curl to download")
+    parser.add_argument("--wget", dest="downloader", action="store_const", const="wget",
+                        help="use wget to download")
     args = parser.parse_args()
+
+    num_files = len(args.paths)
+    jobs = min(args.jobs, num_files) if args.jobs > 0 else num_files
+    show_progress = (num_files == 1) and zmwangx.pbar.autopbar()
+
+    download_kwargs = {
+        "compare_hash": not args.no_check,
+        "show_progress": show_progress,
+        "resume": not args.fresh,
+        "downloader": args.downloader,
+    }
 
     onedrive.log.logging_setup()
     client = _init_client()
 
-    num_files = len(args.paths)
-    jobs = min(args.jobs, num_files) if args.jobs > 0 else num_files
     with multiprocessing.Pool(processes=jobs, maxtasksperchild=1) as pool:
-        show_progress = (num_files == 1) and zmwangx.pbar.autopbar()
-        downloader = Downloader(client, compare_hash=not args.no_check,
-                                show_progress=show_progress)
+        downloader = Downloader(client, download_kwargs=download_kwargs)
         returncodes = []
         try:
             returncodes = pool.map(downloader, args.paths, chunksize=1)

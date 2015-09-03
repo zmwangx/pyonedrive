@@ -7,6 +7,7 @@
 import os
 import logging
 import posixpath
+import subprocess
 import sys
 import time
 import urllib.parse
@@ -863,7 +864,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         else:
             return children
 
-    def download(self, path, compare_hash=True, show_progress=False):
+    def download(self, path, compare_hash=True, show_progress=False,
+                 resume=True, downloader=None):
         """Download a file from OneDrive.
 
         Parameters
@@ -875,6 +877,14 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             ``True``.
         show_progress : bool, optional
             Whether to display a progress bar. Default is ``False``.
+        resume : bool, optional
+            Whether to try to resume an interrupted download. Default is
+            ``True``.
+        downloader : str, optional
+            ``"curl"``, ``"wget"``, or ``None``. If ``None``, use the
+            requests package; otherwise, use the specified external
+            downloader for download (specified downloader has to be on
+            ``PATH``). Default is ``None``.
 
         Raises
         ------
@@ -900,22 +910,63 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             raise FileExistsError("'%s' already exists locally" % local_path)
 
         size = metadata["size"]
-        if show_progress:
-            if compare_hash:
-                print("download progress:", file=sys.stderr)
-            pbar = zmwangx.pbar.ProgressBar(size)
-
-        download_request = requests.get(url=metadata["@content.downloadUrl"], stream=True)
         tmp_path = "%s.part" % local_path
-        with open(tmp_path, "wb") as fileobj:
-            chunk_size = 65536
-            for chunk in download_request.iter_content(chunk_size=chunk_size):
-                if chunk:
-                    fileobj.write(chunk)
-                    if show_progress:
-                        pbar.update(len(chunk))
-        if show_progress:
-            pbar.finish()
+        download_url = metadata["@content.downloadUrl"]
+
+        if downloader in ["curl", "wget"]:
+            if downloader == "curl":
+                cmd = ["curl", "--output", tmp_path]
+                if resume:
+                    cmd.extend(["--continue-at", "-"])
+                if show_progress:
+                    pass
+                else:
+                    cmd.extend(["--silent", "--show-error"])
+            elif downloader == "wget":
+                cmd = ["wget", "--output-document", tmp_path]
+                if resume:
+                    cmd.append("--continue")
+                if show_progress:
+                    cmd.append("--verbose")
+                else:
+                    cmd.append("--quiet")
+
+            cmd.append(download_url)
+            try:
+                subprocess.check_call(cmd)
+            except subprocess.CalledProcessError:
+                if os.path.exists(tmp_path):
+                    downloaded_size = os.path.getsize(tmp_path)
+                else:
+                    downloaded_size = 0
+                msg = ("failed to download '%s' with %s: downloaded %d/%d bytes" %
+                       (path, downloader, downloaded_size, size))
+                raise onedrive.exceptions.CorruptedDownloadError(
+                    msg=msg, path=path, remote_size=size, local_size=downloaded_size)
+        else:
+            # use default downloader
+            if resume and os.path.exists(tmp_path):
+                downloaded_size = os.path.getsize(tmp_path)
+            else:
+                downloaded_size = 0
+            headers = {"Range": "bytes=%d-" % downloaded_size} if resume else {}
+            open_mode = "ab" if resume else "wb"
+
+            if show_progress:
+                if compare_hash:
+                    print("download progress:", file=sys.stderr)
+                pbar = zmwangx.pbar.ProgressBar(size, preprocessed=downloaded_size)
+
+            download_request = requests.get(url=download_url, headers=headers, stream=True)
+            with open(tmp_path, open_mode) as fileobj:
+                chunk_size = 65536
+                for chunk in download_request.iter_content(chunk_size=chunk_size):
+                    if chunk:
+                        fileobj.write(chunk)
+                        if show_progress:
+                            pbar.update(len(chunk))
+            if show_progress:
+                pbar.finish()
 
         local_size = os.path.getsize(tmp_path)
         if size != local_size:
