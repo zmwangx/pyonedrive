@@ -912,8 +912,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
             for chunk in download_request.iter_content(chunk_size=chunk_size):
                 if chunk:
                     fileobj.write(chunk)
-                if show_progress:
-                    pbar.update(chunk_size)
+                    if show_progress:
+                        pbar.update(len(chunk))
         if show_progress:
             pbar.finish()
 
