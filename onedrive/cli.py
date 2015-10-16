@@ -489,19 +489,31 @@ class Downloader(object):
         self._client = client
         self._download_kwargs = download_kwargs
 
-    def __call__(self, path):
-        """Download a remote file."""
+    def __call__(self, args):
+        """Download a remote file.
+
+        ``args`` could either be a single path, which is interpreted as
+        path to the remote file to download (to the current working
+        directory), or a pair ``(remotepath, localdir)``, where localdir
+        is interpreted as the destination directory.
+
+        """
+        if isinstance(args, tuple):
+            remotepath, localdir = args
+        else:
+            remotepath = args
+            localdir = None
         try:
-            self._client.download(path, **self._download_kwargs)
-            cprogress("finished downloading '%s'" % path)
+            self._client.download(remotepath, destdir=localdir, **self._download_kwargs)
+            cprogress("finished downloading '%s'" % remotepath)
             return 0
         except KeyboardInterrupt:
-            cerror("download of '%s' interrupted" % path)
+            cerror("download of '%s' interrupted" % remotepath)
             return 1
         except Exception as err:
             # catch any exception in a multiprocessing environment
             cerror("failed to download '%s': %s: %s" %
-                   (path, type(err).__name__, str(err)))
+                   (remotepath, type(err).__name__, str(err)))
             return 1
 
 def cli_download():
@@ -543,6 +555,85 @@ def cli_download():
         except KeyboardInterrupt:
             returncodes.append(1)
         return 1 if 1 in returncodes else 0
+
+def cli_dirdownload():
+    """Directory download CLI."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("remotedir", help="remote directory to download")
+    parser.add_argument("localdir", help="path to the local *parent* directory to download to")
+    parser.add_argument("-j", "--jobs", type=int, default=8,
+                        help="number of concurrect downloads, use 0 for unlimited; default is 8")
+    parser.add_argument("--no-check", action="store_true",
+                        help="do not compare checksum of remote and local files")
+    parser.add_argument("-f", "--fresh", action="store_true",
+                        help="discard any previous failed download")
+    parser.add_argument("--curl", dest="downloader", action="store_const", const="curl",
+                        help="use curl to download")
+    parser.add_argument("--wget", dest="downloader", action="store_const", const="wget",
+                        help="use wget to download")
+    parser.add_argument("-n", "--name",
+                        help="""name of the local directory to create
+                        (by default it is just the basename of the
+                        remote directory)""")
+    args = parser.parse_args()
+
+    remoteroot = args.remotedir
+    localparent = os.path.abspath(args.localdir)
+    localname = args.name if args.name is not None else os.path.basename(remoteroot)
+    localroot = os.path.join(localparent, localname)
+
+    onedrive.log.logging_setup()
+    client = _init_client()
+
+    if not os.path.isdir(localparent):
+        cfatal_error("'%s' is not an existing local directory" % localparent)
+        return 1
+
+    if not client.isdir(remoteroot):
+        cfatal_error("'%s' is not an existing remote directory" % remoteroot)
+        return 1
+
+    try:  # KeyboardInterrupt guard block
+        show_progress = zmwangx.pbar.autopbar()
+        cprogress("creating local directories...")
+        # downloads is a list of pairs (remotefile, localdir) to download
+        downloads = []
+        for remotedir, _, files in client.walk(remoteroot, paths_only=True):
+            normalized_relpath = onedrive.util.normalized_ospath(
+                posixpath.relpath(remotedir, start=remoteroot))
+            localdir = os.path.normpath(os.path.join(localroot, normalized_relpath))
+            os.makedirs(localdir, exist_ok=True)
+            print(localdir, file=sys.stderr)
+
+            for filename in files:
+                remotefile = posixpath.join(remotedir, filename)
+                downloads.append((remotefile, localdir))
+
+        num_files = len(downloads)
+        jobs = min(args.jobs, num_files) if args.jobs > 0 else num_files
+        show_progress = (num_files == 1) and zmwangx.pbar.autopbar()
+
+        download_kwargs = {
+            "compare_hash": not args.no_check,
+            "show_progress": show_progress,
+            "resume": not args.fresh,
+            "downloader": args.downloader,
+        }
+
+        cprogress("downloading %d files..." % num_files)
+
+        with multiprocessing.Pool(processes=jobs, maxtasksperchild=1) as pool:
+            downloader = Downloader(client, download_kwargs=download_kwargs)
+            returncodes = []
+            try:
+                returncodes = pool.map(downloader, downloads, chunksize=1)
+            except KeyboardInterrupt:
+                returncodes.append(1)
+            return 1 if 1 in returncodes else 0
+
+    except KeyboardInterrupt:
+        cerror("interrupted" % localfile)
+        return 1
 
 def cli_mkdir():
     """Make directory CLI."""

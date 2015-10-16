@@ -53,3 +53,20 @@ def normalized_posixpath(path):
 
     """
     return posixpath.join(*os.path.normpath(path).split(os.sep))
+
+def normalized_ospath(path):
+    """Normalize a POSIX path to an OS-dependent path.
+
+    E.g., a POSIX path ``"a/b"`` will be normalized to the ntpath
+    ``"a\\b"`` os Windows NT systems.
+
+    Parameters
+    ----------
+    path : str
+
+    Returns
+    -------
+    normalized_path : str
+
+    """
+    return os.path.join(*posixpath.normpath(path).split("/"))

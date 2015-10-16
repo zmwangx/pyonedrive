@@ -864,14 +864,17 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         else:
             return children
 
-    def download(self, path, compare_hash=True, show_progress=False,
-                 resume=True, downloader=None):
+    def download(self, path, destdir=None, compare_hash=True,
+                 show_progress=False, resume=True, downloader=None):
         """Download a file from OneDrive.
 
         Parameters
         ----------
         path : str
             Remote path of file to download.
+        destdir : str
+            Destination directory. Default is ``None`` for the current
+            working directory.
         compare_hash : bool, optional
             Whether to compare local and remote file hashes. Default is
             ``True``.
@@ -905,7 +908,8 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         except onedrive.exceptions.FileNotFoundError:
             raise
 
-        local_path = metadata["name"]
+        destdir = os.path.abspath(os.getcwd() if destdir is None else destdir)
+        local_path = os.path.join(destdir, metadata["name"])
         if os.path.exists(local_path):
             raise FileExistsError("'%s' already exists locally" % local_path)
 

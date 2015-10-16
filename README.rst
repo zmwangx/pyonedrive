@@ -64,6 +64,8 @@ Experimental/incomplete features
 
 * Directory upload (recursive), provided by the console script
   ``onedrive-dirupload``;
+* Directory download (recursive), provided by the console script
+  ``onedrive-dirdownload``;
 * Batch renaming, provided by the console script ``onedrive-rename``.
 
 Getting started
