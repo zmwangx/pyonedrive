@@ -2,7 +2,7 @@
  pyonedrive
 ============
 
-**11/06/2015 update.** This project has been permanently shut after `Microsoft drops unlimited OneDrive storage after people use it for unlimited storage <http://arstechnica.com/information-technology/2015/11/microsoft-drops-unlimited-onedrive-storage-after-people-use-it-for-unlimited-storage/>`_.
+**11/06/2015 update.** This project has been permanently shut after `Microsoft dropped unlimited OneDrive storage after people use it for unlimited storage <http://arstechnica.com/information-technology/2015/11/microsoft-drops-unlimited-onedrive-storage-after-people-use-it-for-unlimited-storage/>`_.
 
 **10/08/2015 update.** OneDrive has officially released `a Python SDK <https://github.com/OneDrive/onedrive-sdk-python>`_, so projects looking for an API should use that instead. Meanwhile, this project will still function as an independent CLI with quite helpful progress information and error messages (I won't switch to the official SDK until mine breaks or when I've got a load of time).
 
