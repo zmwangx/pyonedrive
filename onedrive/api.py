@@ -817,16 +817,29 @@ class OneDriveAPIClient(onedrive.auth.OneDriveOAuthClient):
         """
         encoded_path = urllib.parse.quote(path)
         logging.info("requesting children of '%s'", encoded_path)
-        children_response = self.get("drive/root:/%s:/children" % encoded_path)
-        status_code = children_response.status_code
-        if status_code == 200:
-            return children_response.json()["value"]
-        elif status_code == 404:
-            raise onedrive.exceptions.FileNotFoundError(path=path)
-        else:
-            raise onedrive.exceptions.APIRequestError(
-                response=children_response,
-                request_desc="children request for '%s'" % path)
+
+        # handle paging
+        request_url = "drive/root:/%s:/children" % encoded_path
+        children = []
+        while True:
+            children_response = self.get(request_url)
+            status_code = children_response.status_code
+            if status_code == 200:
+                response_json = children_response.json()
+                children.extend(response_json["value"])
+                if "@odata.nextLink" in response_json:
+                    request_url = onedrive.util.pop_query_from_url(
+                        response_json["@odata.nextLink"], "access_token")
+                else:
+                    break
+            elif status_code == 404:
+                raise onedrive.exceptions.FileNotFoundError(path=path)
+            else:
+                raise onedrive.exceptions.APIRequestError(
+                    response=children_response,
+                    request_desc="children request for '%s'" % path)
+
+        return children
 
     def listdir(self, path, names_only=False):
         """List children of a directory.
