@@ -194,13 +194,21 @@ Known issues
 Plans
 =====
 
-A list of enhancement plans are `here
-<https://github.com/zmwangx/pyonedrive/labels/enhancement>`_ in the issue
-tracker.
+.. raw:: html
 
-Apart from that, I might implement additional features in the future, most
-likely when I personally need something. Feel free to suggest features and
-enhancements in the issue tracker though (or better yet, submit pull requests).
+   <p><del>A list of enhancement plans are <a target="_blank"
+   href="https://github.com/zmwangx/pyonedrive/labels/enhancement">here</a> in
+   the issue tracker.</del></p>
+
+   <p><del>Apart from that, I might implement additional features in the future, most
+   likely when I personally need something. Feel free to suggest features and
+   enhancements in the issue tracker though (or better yet, submit pull
+   requests).</del></p>
+
+A list of plans that were shutdown after Microsoft shutting down unlimited
+storage can be found under the `wontfix
+<https://github.com/zmwangx/pyonedrive/issues?utf8=%E2%9C%93&q=is%3Aissue+label%3Awontfix+>`_
+label.
 
 License
 -------
